@@ -300,7 +300,7 @@ class Database:
         # set chunksize based on ncores and nstored_values
         ncores = len(ipyclient)
         nvals = self.nstored_values
-        self.chunksize = int(np.ceil(nvals / (ncores * 2)))
+        self.chunksize = int(np.ceil(nvals / (ncores * 4)))
         self.chunksize = min(1000, self.chunksize)
         self.chunksize = max(4, self.chunksize)        
 
@@ -320,35 +320,38 @@ class Database:
         # wait for jobs to finish, catch results as they return and enter 
         # them into the HDF5 database. This keeps memory low.
         done = self.checkpoint
-        while 1:
-            ## gather finished jobs
-            finished = [i for i, j in rasyncs.items() if j.ready()]
+        try:
+            io5 = h5py.File(self.database, 'r+')
+            while 1:
+                ## gather finished jobs
+                finished = [i for i, j in rasyncs.items() if j.ready()]
 
-            ## iterate over finished list and insert results
-            for job in finished:
-                rasync = rasyncs[job]
-                if rasync.successful():
+                ## iterate over finished list and insert results
+                for job in finished:
+                    rasync = rasyncs[job]
+                    if rasync.successful():
 
-                    # store result
-                    done += 1
-                    result = rasync.get().counts
-                    with h5py.File(self.database, 'r+') as io5:
+                        # store result
+                        done += 1
+                        result = rasync.get().counts                       
                         io5["counts"][job:job + self.chunksize] = result
 
-                    # free up memory from job
-                    del rasyncs[job]
+                        # free up memory from job
+                        del rasyncs[job]
 
+                    else:
+                        raise SimcatError(rasync.get())
+
+                # print progress
+                progress_bar(njobs, done, start, "simulating count matrices")
+
+                # finished: break loop
+                if len(rasyncs) == 0:
+                    break
                 else:
-                    raise SimcatError(rasync.get())
-
-            # print progress
-            progress_bar(njobs, done, start, "simulating count matrices")
-
-            # finished: break loop
-            if len(rasyncs) == 0:
-                break
-            else:
-                time.sleep(0.5)
+                    time.sleep(0.5)
+        finally:
+            io5.close()
 
 
     def run(self, force=True, ipyclient=None, show_cluster=False, auto=False):
