@@ -16,6 +16,9 @@ import subprocess
 from random import getrandbits
 
 import ipyparallel as ipp
+from ipywidgets import HTML, Box
+from IPython.display import display
+
 from .utils import SimcatError
 
 
@@ -38,6 +41,16 @@ class Parallel(object):
         self.ipyclient = ipyclient
         self.show_cluster = show_cluster
         self.auto = auto
+        self.message = HTML()
+        self.widget = Box(children=[self.message], layout={"margin": "0px"})
+        self.update_message("Establishing parallel connection:")
+        display(self.widget)
+
+
+    def update_message(self, inner):
+        s1 = "<span style='font-size:14px; font-family:monospace'>"
+        s2 = "</span>"
+        self.message.value = s1 + inner + s2
 
     
     def start_ipcluster(self):
@@ -125,15 +138,16 @@ class Parallel(object):
             ipyclient = ipp.Client(**args)
 
             # restore std printing now that Client print statement has passed
-            sys.stdout = save_stdout
-            sys.stderr = save_stderr
-            print("establishing parallel connection:")
+            # sys.stdout = save_stdout
+            # sys.stderr = save_stderr
 
             # allow time to find the connection; count cores to break
             for _ in range(6000):
 
                 # how many cores can we find right now?
                 ncores = len(ipyclient)
+                self.update_message(
+                    "Establishing parallel connection: {}".format(ncores))
                 time.sleep(0.01)
 
                 # are all cores found yet? if so, break.
@@ -146,14 +160,14 @@ class Parallel(object):
                 if self.tool.ipcluster["engines"] == "MPI":
                     # are any cores found yet? do long wait.
                     if ncores:
-                        time.sleep(3)
+                        time.sleep(1)
                         if len(ipyclient) == ncores:
                             break
 
                 # if Local then if at least one core we're happy to move on.
                 else:
                     if ncores:
-                        time.sleep(1)
+                        time.sleep(0.5)
                         break
 
         except KeyboardInterrupt as inst:
@@ -168,11 +182,14 @@ class Parallel(object):
             sys.stdout = save_stdout
             sys.stderr = save_stderr
 
+        self.update_message(
+            "Establishing parallel connection: {}".format(len(ipyclient)))
+
         return ipyclient
 
 
 
-    def print_cluster_info(self):
+    def display_cluster_info(self):
         """ reports host and engine info for an ipyclient """    
         # get engine data, skips busy engines.
         hosts = []
@@ -186,9 +203,13 @@ class Parallel(object):
         result = []
         for hostname in set(hosts):
             result.append(
-                "host compute node: [{} cores] on {}"
-                .format(hosts.count(hostname), hostname))
-        print("\n".join(result))
+                # "host compute node: [{} cores] on {}"
+                # .format(hosts.count(hostname), hostname))
+                "{} ({} cores)"
+                .format(hostname, hosts.count(hostname)))
+        #print("\n".join(result))
+        self.update_message(
+            "Parallel connection: " + ", ".join(result))
 
 
     def store_pids_for_shutdown(self):
@@ -234,14 +255,20 @@ class Parallel(object):
 
             # print cluster stats at this point
             if self.show_cluster:
-                self.print_cluster_info()
+                self.display_cluster_info()
+            else:
+                self.widget.close()
 
             # before running any jobs store engine pids for hard shutdown
             self.store_pids_for_shutdown()
 
             # run the job
             if not dry_run:
-                self.tool._run(**self.rkwargs, ipyclient=self.ipyclient)
+                self.tool._run(
+                    **self.rkwargs, 
+                    ipyclient=self.ipyclient, 
+
+                    )
 
         # print the error and cleanup
         except KeyboardInterrupt:
@@ -278,14 +305,20 @@ class Parallel(object):
                     self.ipyclient.purge_everything()
                 else:
                     self.auto = True
-                    print("\nerror: ipcluster shutdown and must be restarted")
+                    self.update_message(
+                        "Error: ipcluster shutdown and must be restarted")
+                    # print("\nerror: ipcluster shutdown and must be restarted")
 
                 # Shutdown the hub if it was auto-launched or broken
                 if self.auto:
                     self.ipyclient.shutdown(hub=True, block=False)
                     self.ipyclient.close()
                     if self.show_cluster:
-                        print("closing parallel connection.")
-                
+                        self.update_message("Parallel connection closed.")
+                        time.sleep(0.5)
+        
+            # close the cluster info
+            self.widget.close()
+
         except Exception as inst2:
             print("warning: error during shutdown:\n{}".format(inst2))
