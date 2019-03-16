@@ -300,8 +300,9 @@ class Database:
         # set chunksize based on ncores and nstored_values
         ncores = len(ipyclient)
         nvals = self.nstored_values
-        self.chunksize = int(np.ceil(nvals / ncores))
+        self.chunksize = int(np.ceil(nvals / (ncores * 2)))
         self.chunksize = min(1000, self.chunksize)
+        self.chunksize = max(4, self.chunksize)        
 
         # an iterator to return chunked slices of jobs
         jobs = range(self.checkpoint, self.nstored_values, self.chunksize)
