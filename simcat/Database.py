@@ -20,7 +20,7 @@ from scipy.special import comb
 from .Model import Model
 from .Simulator import Simulator
 from .parallel import Parallel
-from .utils import get_all_admix_edges, SimcatError, progress_bar
+from .utils import get_all_admix_edges, SimcatError, Progress
 
 
 ############################################################################
@@ -289,9 +289,6 @@ class Database:
         jobs = range(self.checkpoint, self.nstored_values, self.chunksize)
         njobs = int((self.nstored_values - self.checkpoint) / self.chunksize)
 
-        # start progress bar
-        start = time.time()
-
         # submit jobs to engines
         rasyncs = {}
         for slice0 in jobs:
@@ -301,6 +298,8 @@ class Database:
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
+        progress = Progress(njobs, "Simulating count matrices", )
+        progress.display()
         done = self.checkpoint
         try:
             io5 = h5py.File(self.counts, mode='r+')
@@ -315,6 +314,7 @@ class Database:
 
                         # store result
                         done += 1
+                        progress.increment_all()
                         result = rasync.get().counts                       
                         io5["counts"][job:job + self.chunksize] = result
 
@@ -325,7 +325,8 @@ class Database:
                         raise SimcatError(rasync.get())
 
                 # print progress
-                progress_bar(njobs, done, start, "simulating count matrices")
+                progress.increment_time()
+                # progress_bar(njobs, done, start, "simulating count matrices")
 
                 # finished: break loop
                 if len(rasyncs) == 0:
