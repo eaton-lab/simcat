@@ -59,9 +59,9 @@ class Simulator:
             self.counts = np.zeros(
                 (self.nvalues, self.nquarts, 16, 16), dtype=np.float32) 
 
-            # calls run and returns filled counts matrix
-            if run:
-                self.run()
+        # calls run and returns filled counts matrix
+        if run:
+            self.run()
 
 
     def _get_tree_sequence(self, idx):

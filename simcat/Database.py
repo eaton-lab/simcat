@@ -324,7 +324,7 @@ class Database:
         # them into the HDF5 database. This keeps memory low.
         done = self.checkpoint
         try:
-            io5 = h5py.File(self.database, 'r+')
+            io5 = h5py.File(self.database, mode='r+')
             while 1:
                 ## gather finished jobs
                 finished = [i for i, j in rasyncs.items() if j.ready()]
@@ -371,12 +371,6 @@ class Database:
         # Fill all params into the database (this inits the Model objects 
         # which call ._get_test_values() to generate all simulation scenarios.
         self.fill_database_labels(force=force)
-
-        # Close the database. It is now ready to be filled with .run()
-        # which will run until all tests are finished in the database. We 
-        # could then return to this Model object and add more tests later 
-        # if we wanted by using ...<make this>
-        self._db.close()
 
         # distribute filling jobs in parallel
         pool = Parallel(
