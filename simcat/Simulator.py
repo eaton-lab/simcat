@@ -128,7 +128,7 @@ class Simulator:
             rate = self._aprops[evt]
             time = int(self._atimes[evt] * 2. * self._Ne)
             source = self._asources[evt]
-            dest = self.atargets[evt]
+            dest = self._atargets[evt]
 
             # rename nodes at time of admix in case divergences renamed them
             snode = self.tree.treenode.search_nodes(idx=source)[0]
