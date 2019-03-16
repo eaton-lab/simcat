@@ -27,6 +27,7 @@ setup(
         "h5py",
         "ipyparallel",
         "toytree",
+        "msprime",
     ],
     entry_points={},
     data_files=[],
