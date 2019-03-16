@@ -265,7 +265,7 @@ class Database:
 
         # progress
         if not self._quiet:
-            print("{} sims: {}".format(self.nstored_values, self.i5))
+            print("{} sims: {}".format(self.nstored_values, self.labels))
 
         # close shop
         self.i5.close()
@@ -298,13 +298,13 @@ class Database:
         for slice0 in jobs:
             slice1 = min(nvals, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.i5, slice0, slice1)
+                args = (self.labels, slice0, slice1)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
         done = self.checkpoint
         try:
-            io5 = h5py.File(self.o5, mode='r+')
+            io5 = h5py.File(self.counts, mode='r+')
             while 1:
                 ## gather finished jobs
                 finished = [i for i, j in rasyncs.items() if j.ready()]
