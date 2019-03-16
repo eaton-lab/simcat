@@ -5,6 +5,9 @@ import time
 import datetime
 import numpy as np
 
+from ipywidgets import IntProgress, HTML, VBox
+from IPython.display import display
+
 
 class SimcatError(Exception):
     def __init__(self, *args, **kwargs):
@@ -56,22 +59,61 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.25):
 
 
 
-def progress_bar(njobs, nfinished, start, message=""):
-    "prints a progress bar"
-    ## measure progress
-    if njobs:
-        progress = 100 * (nfinished / njobs)
-    else:
-        progress = 100
+# def progress_bar(njobs, nfinished, start, message=""):
+#     "prints a progress bar"
+#     ## measure progress
+#     if njobs:
+#         progress = 100 * (nfinished / njobs)
+#     else:
+#         progress = 100
 
-    ## build the bar
-    hashes = "#" * int(progress / 5.)
-    nohash = " " * int(20 - len(hashes))
+#     ## build the bar
+#     hashes = "#" * int(progress / 5.)
+#     nohash = " " * int(20 - len(hashes))
 
-    ## get time stamp
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
+#     ## get time stamp
+#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
 
-    ## print to stderr
-    args = [hashes + nohash, int(progress), elapsed, message]
-    print("\r[{}] {:>3}% | {} | {}".format(*args), end="")
-    sys.stderr.flush()
+#     ## print to stderr
+#     args = [hashes + nohash, int(progress), elapsed, message]
+#     print("\r[{}] {:>3}% | {} | {}".format(*args), end="")
+#     sys.stderr.flush()
+
+
+
+class Progress(object):
+    def __init__(self, njobs, message):
+        self.njobs = njobs
+        self.message = message
+        self.start = time.time()
+        self.bar = IntProgress(
+            value=0, min=0, max=self.njobs, 
+            layout={"width": "350px"})
+        self.label = HTML(self.printstr)
+        self.widget = VBox(
+            children=[self.label, self.bar], 
+            layout={"padding": "0px", "margin": "0px"})
+        
+    @property
+    def printstr(self):
+        elapsed = datetime.timedelta(seconds=int(time.time() - self.start))
+        s1 = "<span style='font-size:14px; font-family:monospace'>"
+        s2 = "</span>"
+        inner = "{} | {:>3}% | {}".format(
+            self.message, 
+            int(100 * (self.bar.value / self.njobs)),
+            elapsed,
+        )
+        return s1 + inner + s2
+
+    def display(self):
+        display(self.widget)
+    
+    def increment_all(self):
+        self.bar.value += 1
+        if self.bar.value == self.njobs:
+            self.bar.bar_style = "success"
+        self.increment_time()
+            
+    def increment_time(self):
+        self.label.value = self.printstr
