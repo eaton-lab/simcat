@@ -288,6 +288,9 @@ class Database:
         # progress
         if not self._quiet:
             print("{} sims: {}".format(self.nstored_values, self.database))
+
+        # close shop
+        self._db.close()
               
 
     def _run(self, ipyclient):
