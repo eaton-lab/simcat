@@ -105,10 +105,12 @@ class Database:
         self.workdir = (
             workdir if workdir 
             else os.path.realpath(os.path.join('.', "databases")))
-        self.database = os.path.realpath(
-            os.path.join(workdir, self.name + ".hdf5"))
+        # labels data file
+        self.labels = os.path.realpath(
+            os.path.join(workdir, "{}.labels.h5".format(self.name)))
+        self.counts = os.path.realpath(
+            os.path.join(workdir, "{}.counts.h5".format(self.name)))
         self.checkpoint = 0
-        self._db = None  # open/closed file handle of self.database
         self._quiet = quiet
 
         # store params
@@ -145,17 +147,18 @@ class Database:
             os.makedirs(workdir)
 
 
-    def debug_report(self):
+    def database_status(self):
         """
-        Prints to screen info about the size of the database
-        Assumes the self._db handle is open in read-mode
+        Prints to screen info about the size of the database files and the 
+        progress/checkpoint for filling the databases. 
         """
-        keys = self._db.keys()
-        for key in keys:
-            print(key, self._db[key].shape)
+        with h5py.File(self.labels) as io5:
+            keys = io5.keys()
+            for key in keys:
+                print(key, io5[key].shape)
 
 
-    def _generate_empty_database(self):
+    def init_databases(self, force=False):
         """
         Parses parameters in self.params to create all combinations
         of parameter values to test. Returns the number of the simulations.
@@ -163,79 +166,57 @@ class Database:
 
         Expect that the h5 file self._db is open in w or a mode.
         """       
+        # create database in 'w-' mode to prevent overwriting
+        if not os.path.exists(self.labels):
+            self.i5 = h5py.File(self.labels, mode='w')
+            self.o5 = h5py.File(self.counts, mode='w')            
+        else:
+            if force:
+                self.i5 = h5py.File(self.labels, mode='w')
+                self.o5 = h5py.File(self.counts, mode='w')                
+            else:
+                self.i5 = h5py.File(self.labels, mode='a')
+                self.o5 = h5py.File(self.counts, mode='a')                
+
         # store the tree as newick using idx for name, 
-        storetree = self.tree.copy()
-        for node in storetree.treenode.traverse():
+        itree = self.tree.copy()
+        for node in itree.treenode.traverse():
             node.name = node.idx
-        self._db.attrs["tree"] = storetree.write()
-        self._db.attrs["nsnps"] = self.nsnps
+        self.i5.attrs["tree"] = itree.write()
+        self.o5.attrs["tree"] = itree.write()        
+        self.i5.attrs["nsnps"] = self.nsnps
+        self.o5.attrs["nsnps"] = self.nsnps
 
         # data size = nevents x ntests x nreps
-        admixedges = get_all_admix_edges(storetree)
+        admixedges = get_all_admix_edges(itree)
         nevents = int(comb(N=len(admixedges), k=self.nedges))
         nvalues = nevents * self.ntests * self.nreps 
         self.nstored_values = nvalues
 
         # number of quartets depends only on size of tree
-        nquarts = int(comb(N=len(storetree), k=4))
+        nquarts = int(comb(N=len(itree), k=4))
 
         # store count matrices (the data)
-        self._db.create_dataset("counts", 
+        self.o5.create_dataset("counts", 
             shape=(nvalues, nquarts, 16, 16),
             dtype=np.float32)
 
         # the labels: for pulsed migration admix_tstarts but not admix_tends
-        self._db.create_dataset("admix_sources", 
+        self.i5.create_dataset("admix_sources", 
             shape=(nvalues, self.nedges),
             dtype=np.uint8)
-        self._db.create_dataset("admix_targets", 
+        self.i5.create_dataset("admix_targets", 
             shape=(nvalues, self.nedges),
             dtype=np.uint8)
-        self._db.create_dataset("admix_props", 
+        self.i5.create_dataset("admix_props", 
             shape=(nvalues, self.nedges),
             dtype=np.float64)
-        self._db.create_dataset("admix_times", 
+        self.i5.create_dataset("admix_times", 
             shape=(nvalues, self.nedges),
             dtype=np.float64)
-        # self._db.create_dataset("admix_tends", 
-        # shape=(nvalues, self.nedges),
-        # dtype=np.float64)
-
-        # store parameters of the simulation
-        self._db.create_dataset("thetas",
+        self.i5.create_dataset("thetas",
             shape=(nvalues,),
             dtype=np.float64)
-
-
-    def fill_database_labels(self, force=False):
-        """
-        This is called by .run() automatically and not meant to be called by 
-        users except for debugging purposes. This will create the database 
-        (._db attribute) and fill it with labels. 
-
-        This iterates across generated trees and creates simulation scenarios
-        for nreps iterations for each admixture edge(s) scenario in the tree
-        and stores the full parameter information into the hdf5 database.
-        """
-
-        # create database in 'w-' mode to prevent overwriting
-        if os.path.exists(self.database):
-            if force:
-                os.remove(self.database)
-                self._db = h5py.File(self.database, mode='w')
-            # exists, append to it
-            else:
-                self._db = h5py.File(self.database, mode='a')
-        else:
-            # does not exist
-            self._db = h5py.File(self.database, mode='w-')     
-
-        # Create h5 datasets for these simulations
-        if not self._db.get("counts"):
-            self._generate_empty_database()
-
-        # (1) ntrees: iterate over each sampled tree (itree)
-        itree = self.tree
 
         # get all admixture edges that can be drawn on this tree
         admixedges = get_all_admix_edges(itree)
@@ -265,7 +246,7 @@ class Database:
 
             # store thetas same for every rep, but not test (0,0,0,1,1,1)
             thetas = tile_reps(mdict["thetas"], self.nreps)
-            self._db["thetas"][sta:end] = thetas
+            self.i5["thetas"][sta:end] = thetas
 
             # get labels from admixlist and model.test_values
             for xidx in range(model.aedges):
@@ -276,21 +257,19 @@ class Database:
                 # mend = tile_reps(mdict[xidx]["mtimes"][:, 1], self.nreps)                    
 
                 # store labels for this admix event (nevents x nreps)
-                self._db["admix_sources"][sta:end, xidx] = sources
-                self._db["admix_targets"][sta:end, xidx] = targets
-                self._db["admix_props"][sta:end, xidx] = mrates
-                self._db["admix_times"][sta:end, xidx] = mtimes.astype(np.float64)
-                # self._db["admix_tstarts"][sta:end, xidx] = msta
-                # self._db["admix_tends"][sta:end, xidx] = mend
-
+                self.i5["admix_sources"][sta:end, xidx] = sources
+                self.i5["admix_targets"][sta:end, xidx] = targets
+                self.i5["admix_props"][sta:end, xidx] = mrates
+                self.i5["admix_times"][sta:end, xidx] = mtimes.astype(np.float64)
             eidx += nnn
 
         # progress
         if not self._quiet:
-            print("{} sims: {}".format(self.nstored_values, self.database))
+            print("{} sims: {}".format(self.nstored_values, self.i5))
 
         # close shop
-        self._db.close()
+        self.i5.close()
+        self.o5.close()
               
 
     def _run(self, ipyclient):
@@ -319,14 +298,13 @@ class Database:
         for slice0 in jobs:
             slice1 = min(nvals, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.database, slice0, slice1)
+                args = (self.i5, slice0, slice1)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
-        # wait for jobs to finish, catch results as they return and enter 
-        # them into the HDF5 database. This keeps memory low.
+        # catch results as they return and enter into H5 to keep mem low.
         done = self.checkpoint
         try:
-            io5 = h5py.File(self.database, mode='r+')
+            io5 = h5py.File(self.o5, mode='r+')
             while 1:
                 ## gather finished jobs
                 finished = [i for i, j in rasyncs.items() if j.ready()]
@@ -356,6 +334,7 @@ class Database:
                 else:
                     time.sleep(0.5)
         finally:
+            # copy the tmp array to the 
             io5.close()
 
 
@@ -372,7 +351,7 @@ class Database:
         """
         # Fill all params into the database (this inits the Model objects 
         # which call ._get_test_values() to generate all simulation scenarios.
-        self.fill_database_labels(force=force)
+        self.init_databases(force=force)
 
         # distribute filling jobs in parallel
         pool = Parallel(
