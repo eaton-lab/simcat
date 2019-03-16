@@ -297,6 +297,12 @@ class Database:
         # load-balancer for single-threaded execution jobs
         lbview = ipyclient.load_balanced_view()
 
+        # set chunksize based on ncores and nstored_values
+        ncores = len(ipyclient)
+        nvals = self.nstored_values
+        self.chunksize = int(np.ceil(nvals / ncores))
+        self.chunksize = min(1000, self.chunksize)
+
         # an iterator to return chunked slices of jobs
         jobs = range(self.checkpoint, self.nstored_values, self.chunksize)
         njobs = int((self.nstored_values - self.checkpoint) / self.chunksize)
