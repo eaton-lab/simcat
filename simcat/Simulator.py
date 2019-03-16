@@ -146,7 +146,6 @@ class Simulator:
         """
         run and parse results for nsamples simulations.
         """
-
         # iterate over ntests (different sampled simulation parameters)
         for idx in range(self.nvalues):
 
