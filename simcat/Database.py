@@ -316,9 +316,11 @@ class Database:
 
         # submit jobs to engines
         rasyncs = {}
-        for job in jobs:
-            args = (self.database, job, job + self.chunksize)
-            rasyncs[job] = lbview.apply(Simulator, *args)
+        for slice0 in jobs:
+            slice1 = min(nvals, slice0 + self.chunksize)
+            if slice1 > slice0:
+                args = (self.database, slice0, slice1)
+                rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # wait for jobs to finish, catch results as they return and enter 
         # them into the HDF5 database. This keeps memory low.
