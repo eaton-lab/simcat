@@ -125,7 +125,14 @@ class Database:
         self.ntests = ntests        
         self.nreps = nreps
         self.nsnps = nsnps
-        self.nstored_values = None
+        admixedges = get_all_admix_edges(self.tree)
+        nevents = int(comb(N=len(admixedges), k=self.nedges))
+        nvalues = nevents * self.ntests * self.nreps 
+        self.nstored_values = nvalues
+
+        # progress
+        if not self._quiet:
+            print("{} sims: {}".format(self.nstored_values, self.labels))       
 
         # decide on an appropriate chunksize to keep memory load reasonable
         self.chunksize = 100
@@ -152,10 +159,13 @@ class Database:
         Prints to screen info about the size of the database files and the 
         progress/checkpoint for filling the databases. 
         """
+        print(self.nstored_values)
         with h5py.File(self.labels) as io5:
             keys = io5.keys()
             for key in keys:
                 print(key, io5[key].shape)
+        with h5py.File(self.counts) as io5:
+            print(key, io5["counts"].shape)
 
 
     def init_databases(self, force=False):
@@ -187,35 +197,29 @@ class Database:
         self.i5.attrs["nsnps"] = self.nsnps
         self.o5.attrs["nsnps"] = self.nsnps
 
-        # data size = nevents x ntests x nreps
-        admixedges = get_all_admix_edges(itree)
-        nevents = int(comb(N=len(admixedges), k=self.nedges))
-        nvalues = nevents * self.ntests * self.nreps 
-        self.nstored_values = nvalues
-
         # number of quartets depends only on size of tree
         nquarts = int(comb(N=len(itree), k=4))
 
         # store count matrices (the data)
         self.o5.create_dataset("counts", 
-            shape=(nvalues, nquarts, 16, 16),
+            shape=(self.nstored_values, nquarts, 16, 16),
             dtype=np.float32)
 
         # the labels: for pulsed migration admix_tstarts but not admix_tends
         self.i5.create_dataset("admix_sources", 
-            shape=(nvalues, self.nedges),
+            shape=(self.nstored_values, self.nedges),
             dtype=np.uint8)
         self.i5.create_dataset("admix_targets", 
-            shape=(nvalues, self.nedges),
+            shape=(self.nstored_values, self.nedges),
             dtype=np.uint8)
         self.i5.create_dataset("admix_props", 
-            shape=(nvalues, self.nedges),
+            shape=(self.nstored_values, self.nedges),
             dtype=np.float64)
         self.i5.create_dataset("admix_times", 
-            shape=(nvalues, self.nedges),
+            shape=(self.nstored_values, self.nedges),
             dtype=np.float64)
         self.i5.create_dataset("thetas",
-            shape=(nvalues,),
+            shape=(self.nstored_values,),
             dtype=np.float64)
 
         # get all admixture edges that can be drawn on this tree
@@ -263,10 +267,6 @@ class Database:
                 self.i5["admix_times"][sta:end, xidx] = mtimes.astype(np.float64)
             eidx += nnn
 
-        # progress
-        if not self._quiet:
-            print("{} sims: {}".format(self.nstored_values, self.labels))
-
         # close shop
         self.i5.close()
         self.o5.close()
@@ -281,8 +281,7 @@ class Database:
 
         # set chunksize based on ncores and nstored_values
         ncores = len(ipyclient)
-        nvals = self.nstored_values
-        self.chunksize = int(np.ceil(nvals / (ncores * 4)))
+        self.chunksize = int(np.ceil(self.nstored_values / (ncores * 4)))
         self.chunksize = min(1000, self.chunksize)
         self.chunksize = max(4, self.chunksize)        
 
@@ -296,7 +295,7 @@ class Database:
         # submit jobs to engines
         rasyncs = {}
         for slice0 in jobs:
-            slice1 = min(nvals, slice0 + self.chunksize)
+            slice1 = min(self.nstored_values, slice0 + self.chunksize)
             if slice1 > slice0:
                 args = (self.labels, slice0, slice1)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
