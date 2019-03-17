@@ -5,7 +5,7 @@ import time
 import datetime
 import numpy as np
 
-from ipywidgets import IntProgress, HTML, VBox
+from ipywidgets import IntProgress, HTML, Box
 from IPython.display import display
 
 
@@ -82,17 +82,43 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.25):
 
 
 class Progress(object):
-    def __init__(self, njobs, message):
+    def __init__(self, njobs, message, children):
+
+        # data
         self.njobs = njobs
         self.message = message
         self.start = time.time()
+
+        # the progress bar 
         self.bar = IntProgress(
             value=0, min=0, max=self.njobs, 
-            layout={"width": "350px"})
-        self.label = HTML(self.printstr)
-        self.widget = VBox(
-            children=[self.label, self.bar], 
-            layout={"padding": "0px", "margin": "0px"})
+            layout={
+                "width": "350px",
+                "height": "30px",
+                "margin": "5px 0px 0px 0px",
+            })
+
+        # the message above progress bar
+        self.label = HTML(
+            self.printstr, 
+            layout={
+                "height": "25px",
+                "margin": "0px",
+            })
+
+        # the box widget container
+        heights = [
+            int(i.layout.height[:-2]) for i in 
+            children + [self.label, self.bar]
+        ]
+        self.widget = Box(
+            children=children + [self.label, self.bar], 
+            layout={
+                "display": "flex",
+                "flex_flow": "column",
+                "height": "{}px".format(sum(heights) + 5),
+                "margin": "5px 0px 5px 0px",
+            })
         
     @property
     def printstr(self):
@@ -109,8 +135,8 @@ class Progress(object):
     def display(self):
         display(self.widget)
     
-    def increment_all(self):
-        self.bar.value += 1
+    def increment_all(self, value=1):
+        self.bar.value += value
         if self.bar.value == self.njobs:
             self.bar.bar_style = "success"
         self.increment_time()
