@@ -272,10 +272,14 @@ class Database:
         self.o5.close()
               
 
-    def _run(self, ipyclient):
+    def _run(self, ipyclient, children=[]):
         """
         Sends jobs to parallel engines to run Simulator.run().
         """
+
+        # if outfile exists and not force then find checkpoint
+        # ...
+
         # load-balancer for single-threaded execution jobs
         lbview = ipyclient.load_balanced_view()
 
@@ -298,7 +302,8 @@ class Database:
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
-        progress = Progress(njobs, "Simulating count matrices", )
+        progress = Progress(njobs, "Simulating count matrices", children)
+        progress.increment_all(self.checkpoint)
         progress.display()
         done = self.checkpoint
         try:
