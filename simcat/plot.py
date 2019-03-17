@@ -45,7 +45,11 @@ COLORMAPS = [
 
 
 ## plotting functions
-def draw_count_matrix(count_matrix, norm_variants=True, **kwargs):
+def draw_count_matrix(
+    count_matrix, 
+    norm_variants=True, 
+    show_invariants=True,
+    **kwargs):
     """
     plot a count matrix with invariants sites overlaid.
 
@@ -65,12 +69,10 @@ def draw_count_matrix(count_matrix, norm_variants=True, **kwargs):
     height, width, font-size.
     """
     # set invariant cells to max
+    invs = [(0, 0), (5, 5), (10, 10), (15, 15)]
     if norm_variants:
-        orig = count_matrix.copy()
-        count_matrix[0, 0] = 0
-        count_matrix[5, 5] = 0
-        count_matrix[10, 10] = 0
-        count_matrix[15, 15] = 0
+        for cell in invs:
+            count_matrix[cell] = 0
         count_matrix = count_matrix / count_matrix.max()
 
     # if no user provided colormap use the gradient color[0]
@@ -86,7 +88,7 @@ def draw_count_matrix(count_matrix, norm_variants=True, **kwargs):
 
     # table style arguments
     skwargs = {
-        "font-size": "11px",
+        "font-size": "10px",
     }
     skwargs.update({i: j for i, j in kwargs.items() if i in skwargs})
 
@@ -98,13 +100,18 @@ def draw_count_matrix(count_matrix, norm_variants=True, **kwargs):
     table.cells.grid.hlines[2:-2, 2:-2] = "single"
     table.cells.grid.vlines[2:-2, 2:-2] = "single"
     table.cells.cell[2:-2, 2:-2].data = INVARIANTS
-    table.body.cell[...].format = (
-        toyplot.format.FloatFormatter(format="{:.2g}"))
+
+    if show_invariants:
+        table.body.cell[...].format = (
+            toyplot.format.FloatFormatter(format="{:.2g}"))
     table.body.cell[...].lstyle = skwargs
 
     # fill hidden cells with grey
-    orig
-
+    if norm_variants:
+        table.body.cell[0, 0].style = {"fill": "lightgrey"}
+        table.body.cell[5, 5].style = {"fill": "lightgrey"}
+        table.body.cell[10, 10].style = {"fill": "lightgrey"}
+        table.body.cell[15, 15].style = {"fill": "lightgrey"}    
     return canvas, table
 
 
