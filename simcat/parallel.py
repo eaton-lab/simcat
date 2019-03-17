@@ -41,9 +41,16 @@ class Parallel(object):
         self.ipyclient = ipyclient
         self.show_cluster = show_cluster
         self.auto = auto
-        self.message = HTML()
-        self.widget = Box(children=[self.message], layout={"margin": "0px"})
-        self.update_message("Establishing parallel connection:")
+
+        # setup the widget message to be passed on to _run 
+        self.message = HTML(
+            layout={"height": "25px", "margin": "0px"})
+        self.widget = Box(
+            children=[self.message], 
+            layout={"margin": "5px 0px 5px 0px"})
+        self.update_message("Establishing parallel connection: ...")
+
+        # show the widget message
         display(self.widget)
 
 
@@ -146,8 +153,9 @@ class Parallel(object):
 
                 # how many cores can we find right now?
                 ncores = len(ipyclient)
-                self.update_message(
-                    "Establishing parallel connection: {}".format(ncores))
+                # self.update_message(
+                # "Establishing parallel connection: {} cores"
+                # .format(ncores))
                 time.sleep(0.01)
 
                 # are all cores found yet? if so, break.
@@ -183,13 +191,13 @@ class Parallel(object):
             sys.stderr = save_stderr
 
         self.update_message(
-            "Establishing parallel connection: {}".format(len(ipyclient)))
+            "Parallel connection: {}".format(len(ipyclient)))
 
         return ipyclient
 
 
 
-    def display_cluster_info(self):
+    def get_cluster_info(self):
         """ reports host and engine info for an ipyclient """    
         # get engine data, skips busy engines.
         hosts = []
@@ -200,16 +208,15 @@ class Parallel(object):
 
         ## report it
         hosts = [i.get() for i in hosts]
-        result = []
+        hostdict = {}
         for hostname in set(hosts):
-            result.append(
-                # "host compute node: [{} cores] on {}"
-                # .format(hosts.count(hostname), hostname))
-                "{} ({} cores)"
-                .format(hostname, hosts.count(hostname)))
-        #print("\n".join(result))
+            hostdict[hostname] = hosts.count(hostname)
+        hpairs = [
+            "<i>{}</i>: {} cores".format(key, val) for 
+            (key, val) in hostdict.items()
+        ]
         self.update_message(
-            "Parallel connection: " + ", ".join(result))
+            "Parallelization: {}".format(", ".join(hpairs)))
 
 
     def store_pids_for_shutdown(self):
@@ -254,10 +261,8 @@ class Parallel(object):
                 self.ipyclient = self.wait_for_connection()                
 
             # print cluster stats at this point
-            if self.show_cluster:
-                self.display_cluster_info()
-            else:
-                self.widget.close()
+            self.widget.close()
+            self.get_cluster_info()
 
             # before running any jobs store engine pids for hard shutdown
             self.store_pids_for_shutdown()
@@ -267,7 +272,7 @@ class Parallel(object):
                 self.tool._run(
                     **self.rkwargs, 
                     ipyclient=self.ipyclient, 
-
+                    children=[self.message],
                     )
 
         # print the error and cleanup
