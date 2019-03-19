@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-import sys
 import time
 import datetime
+import itertools
 import numpy as np
+import pandas as pd
 
 from ipywidgets import IntProgress, HTML, Box
 from IPython.display import display
@@ -14,7 +15,7 @@ class SimcatError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 
-def get_all_admix_edges(ttree, lower=0.25, upper=0.25):
+def get_all_admix_edges(ttree, lower=0.25, upper=0.75):
     """
     Find all possible admixture edges on a tree. Edges are unidirectional, 
     so the source and dest need to overlap in time interval. To retrict 
@@ -78,6 +79,90 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.25):
 #     args = [hashes + nohash, int(progress), elapsed, message]
 #     print("\r[{}] {:>3}% | {} | {}".format(*args), end="")
 #     sys.stderr.flush()
+
+
+
+__INVARIANTS__ = """
+AAAA AAAC AAAG AAAT  AACA AACC AACG AACT  AAGA AAGC AAGG AAGT  AATA AATC AATG AATT
+ACAA ACAC ACAG ACAT  ACCA ACCC ACCG ACCT  ACGA ACGC ACGG ACGT  ACTA ACTC ACTG ACTT
+AGAA AGAC AGAG AGAT  AGCA AGCC AGCG AGCT  AGGA AGGC AGGG AGGT  AGTA AGTC AGTG AGTT
+ATAA ATAC ATAG ATAT  ATCA ATCC ATCG ATCT  ATGA ATGC ATGG ATGT  ATTA ATTC ATTG ATTT
+
+CAAA CAAC CAAG CAAT  CACA CACC CACG CACT  CAGA CAGC CAGG CAGT  CATA CATC CATG CATT
+CCAA CCAC CCAG CCAT  CCCA CCCC CCCG CCCT  CCGA CCGC CCGG CCGT  CCTA CCTC CCTG CCTT
+CGAA CGAC CGAG CGAT  CGCA CGCC CGCG CGCT  CGGA CGGC CGGG CGGT  CGTA CGTC CGTG CGTT
+CTAA CTAC CTAG CTAT  CTCA CTCC CTCG CTCT  CTGA CTGC CTGG CTGT  CTTA CTTC CTTG CTTT
+
+GAAA GAAC GAAG GAAT  GACA GACC GACG GACT  GAGA GAGC GAGG GAGT  GATA GATC GATG GATT
+GCAA GCAC GCAG GCAT  GCCA GCCC GCCG GCCT  GCGA GCGC GCGG GCGT  GCTA GCTC GCTG GCTT
+GGAA GGAC GGAG GGAT  GGCA GGCC GGCG GGCT  GGGA GGGC GGGG GGGT  GGTA GGTC GGTG GGTT
+GTAA GTAC GTAG GTAT  GTCA GTCC GTCG GTCT  GTGA GTGC GTGG GTGT  GTTA GTTC GTTG GTTT
+
+TAAA TAAC TAAG TAAT  TACA TACC TACG TACT  TAGA TAGC TAGG TAGT  TATA TATC TATG TATT
+TCAA TCAC TCAG TCAT  TCCA TCCC TCCG TCCT  TCGA TCGC TCGG TCGT  TCTA TCTC TCTG TCTT
+TGAA TGAC TGAG TGAT  TGCA TGCC TGCG TGCT  TGGA TGGC TGGG TGGT  TGTA TGTC TGTG TGTT
+TTAA TTAC TTAG TTAT  TTCA TTCC TTCG TTCT  TTGA TTGC TTGG TTGT  TTTA TTTC TTTG TTTT
+"""
+INVARIANTS = np.array(__INVARIANTS__.strip().split()).reshape(16, 16)
+ABBA_IDX = [
+    (1, 4), (2, 8), (3, 12), (4, 1),
+    (6, 9), (7, 13), (8, 2), (9, 6),
+    (11, 14), (12, 3), (13, 7), (14, 11),
+]
+BABA_IDX = [
+    (1, 1), (2, 2), (3, 3), (4, 4), 
+    (6, 6), (7, 7), (8, 8), (9, 9),
+    (11, 11), (12, 12), (13, 13), (14, 14),
+]
+FIXED_IDX = [
+    (0, 0), (5, 5), (10, 10), (15, 15),
+]
+
+
+def abba_baba(counts):
+    """
+    Calculate ABBA/BABA statistic (D) as (ABBA - BABA) / (ABBA + BABA)
+    """
+    # store vals
+    abbas = []
+    babas = []
+    dstats = []
+    quartets = []
+    reps = []
+    
+    # iterate over reps and quartets
+    for rep in range(counts.shape[0]):
+        
+        # quartet iterator
+        quarts = itertools.combinations(range(counts.shape[1]), 4)
+    
+        # iterate over each mat, quartet
+        for matrix, qrt in zip(range(counts.shape[1]), quarts):
+            count = counts[rep, matrix]
+
+            abba = sum([count[i] for i in ABBA_IDX])
+            abbas.append(abba)
+
+            baba = sum([count[i] for i in BABA_IDX])
+            babas.append(baba)
+
+            dstat = abs(abba - baba) / (abba + baba)
+            dstats.append(dstat)
+
+            quartets.append(qrt)
+            reps.append(rep)
+    
+    # convert to dataframe   
+    df = pd.DataFrame({
+        "ABBA": np.array(abbas, dtype=int),
+        "BABA": np.array(babas, dtype=int),
+        "D": dstats,
+        "quartet": quartets,
+        "reps": reps,
+        }, 
+        columns=["reps", "ABBA", "BABA", "D", "quartet"],
+    )
+    return df
 
 
 
