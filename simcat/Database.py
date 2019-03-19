@@ -164,8 +164,9 @@ class Database:
             keys = io5.keys()
             for key in keys:
                 print(key, io5[key].shape)
+        
         with h5py.File(self.counts) as io5:
-            print(key, io5["counts"].shape)
+            print('counts', io5["counts"].shape)
 
 
     def init_databases(self, force=False):
@@ -203,9 +204,12 @@ class Database:
         # store count matrices (the data)
         self.o5.create_dataset("counts", 
             shape=(self.nstored_values, nquarts, 16, 16),
-            dtype=np.float32)
+            dtype=np.int64)
 
         # the labels: for pulsed migration admix_tstarts but not admix_tends
+        self.i5.create_dataset("admixed", 
+            shape=(self.nstored_values,),
+            dtype=np.bool_)
         self.i5.create_dataset("admix_sources", 
             shape=(self.nstored_values, self.nedges),
             dtype=np.uint8)
@@ -331,7 +335,9 @@ class Database:
 
                 # print progress
                 progress.increment_time()
-                # progress_bar(njobs, done, start, "simulating count matrices")
+
+                # clear progress bar occasionally to avoid iopub rates?
+                # ...would this work?
 
                 # finished: break loop
                 if len(rasyncs) == 0:
