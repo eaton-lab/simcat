@@ -18,7 +18,7 @@ import msprime as ms
 import itertools as itt
 from scipy.special import comb
 
-from .jitted import count_matrix_float, mutate_jc
+from .jitted import count_matrix_int, mutate_jc
 from .utils import get_all_admix_edges, SimcatError
 
 
@@ -32,12 +32,13 @@ class Model:
         tree,
         admixture_edges=None,
         admixture_type=0,
-        theta=0.01,
-        nsnps=1000,
-        ntests=10,
+        theta=0.1,
+        nsnps=5000,
+        ntests=1,
         nreps=1,
         seed=None,
         debug=False,
+        run=False,
         ):
         """
         An object used for demonstration and testing only. The real simulations
@@ -105,9 +106,9 @@ class Model:
         self._debug = debug
 
         # store sim params: fixed mut; range theta; Ne computed from theta,mut
-        self.theta = np.array((min(theta,), max(theta,)))
-        self.length = 100
-        self.mut = 1e-7       
+        theta = ((theta,) if isinstance(theta, (int, float)) else theta)
+        self.theta = np.array((min(theta), max(theta)))
+        self.mut = 1e-7
 
         # dimension of simulations
         self.nsnps = nsnps
@@ -126,7 +127,7 @@ class Model:
         ## storage for output
         self.nquarts = int(comb(N=self.ntips, k=4))  # scipy.special.comb
         self.counts = np.zeros(
-            (self.ntests * self.nreps, self.nquarts, 16, 16), dtype=np.float32)
+            (self.ntests * self.nreps, self.nquarts, 16, 16), dtype=np.int64)
 
         # store node.name as node.idx, save old names in a dict.
         self.namedict = {}
@@ -137,20 +138,24 @@ class Model:
                 node.name = str(node.idx)
 
         # check formats of admixture args
-        self.admixture_edges = admixture_edges
-        self.aedges = len(self.admixture_edges)        
+        self.admixture_edges = (admixture_edges if admixture_edges else [])
         self.admixture_type = (1 if admixture_type in (1, "interval") else 0)
         if self.admixture_edges:
-            if not isinstance(self.admixture_edges, (list, tuple)):
+            if not isinstance(self.admixture_edges[0], (list, tuple)):
                 self.admixture_edges = [self.admixture_edges]
             for edge in self.admixture_edges:
                 if len(edge) != 5:
                     raise ValueError(
                         "admixture edges should each be a tuple with 5 values")
+        self.aedges = (0 if not self.admixture_edges else len(self.admixture_edges))
 
         # generate sim parameters from the tree and admixture scenarios
         # stores in self.sims 'mrates' and 'mtimes'
         self._get_test_values()
+
+        # fill the counts matrix or call run later
+        if run:
+            self.run()
 
 
     @property
@@ -179,7 +184,8 @@ class Model:
         """
         # dictionary to store arrays of params for each admixture scenario
         self.test_values = {
-            "thetas": np.random.uniform(*self.theta, size=self.ntests), 
+            "thetas": np.random.uniform(
+                low=self.theta[0], high=self.theta[1], size=self.ntests), 
         }
 
         # sample times and proportions/rates for admixture intervals
@@ -194,11 +200,11 @@ class Model:
             else:                
                 # sample migration rates in range 1/1000 to 1/10 per gen
                 if self.admixture_type:
-                    mo = (0.001, 0.1)
+                    mo = (0.0, 0.1)
                     mrates = np.random.uniform(*mo, size=self.ntests)
-                # sample migration pulse in range 1% to 50% of population
+                # sample migration pulse in range 5% to 50% of population
                 else:
-                    mo = (0.01, 0.5)
+                    mo = (0.05, 0.5)
                     mrates = np.random.uniform(*mo, size=self.ntests)
 
             # intervals are overlapping edges where admixture can occur. 
@@ -338,8 +344,6 @@ class Model:
 
         # msprime simulation to make tree_sequence generator
         sim = ms.simulate(
-            # mutation_rate=self.mut,
-            # length=self.length,
             migration_matrix=migmat,
             num_replicates=self.nsnps * 1000,                 # ensures SNPs 
             population_configurations=self._get_popconfig(),  # applies Ne
@@ -363,7 +367,7 @@ class Model:
             for rep in range(self.nreps):
 
                 # store results (nsnps, ntips); def. 1000 SNPs
-                snparr = np.zeros((self.nsnps, self.ntips), dtype=np.int32)
+                snparr = np.zeros((self.nsnps, self.ntips), dtype=np.int64)
 
                 # continue until all SNPs are sampled from generator
                 nsnps = 0
@@ -393,11 +397,12 @@ class Model:
                 for currquart in qiter:
                     # cols indices match tip labels b/c we named tips node.idx
                     quartsnps = snparr[:, currquart]
-                    self.counts[gidx, quartidx] = count_matrix_float(quartsnps)
+                    self.counts[gidx, quartidx] = count_matrix_int(quartsnps)                    
+                    # self.counts[gidx, quartidx] = count_matrix_float(quartsnps)
                     quartidx += 1
 
                 # scale by max count for this rep
-                self.counts[gidx, ...] /= self.counts[gidx, ...].max()
+                # self.counts[gidx, ...] /= self.counts[gidx, ...].max()
                 gidx += 1
 
             if self._debug: 
