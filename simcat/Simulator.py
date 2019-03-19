@@ -16,7 +16,7 @@ import msprime as ms
 import itertools as itt
 from scipy.special import comb
 
-from .jitted import count_matrix_float, mutate_jc
+from .jitted import count_matrix_int, mutate_jc
 
 
 #############################################################################
@@ -57,7 +57,7 @@ class Simulator:
             self.nquarts = int(comb(N=self.ntips, k=4))  # scipy.special.comb
             self.nvalues = self.slice1 - self.slice0
             self.counts = np.zeros(
-                (self.nvalues, self.nquarts, 16, 16), dtype=np.float32) 
+                (self.nvalues, self.nquarts, 16, 16), dtype=np.int64) 
 
         # calls run and returns filled counts matrix
         if run:
@@ -153,7 +153,7 @@ class Simulator:
             sims = self._get_tree_sequence(idx)
 
             # store results (nsnps, ntips); def. 1000 SNPs
-            snparr = np.zeros((self.nsnps, self.ntips), dtype=np.int32)
+            snparr = np.zeros((self.nsnps, self.ntips), dtype=np.int64)
 
             # continue until all SNPs are sampled from generator
             nsnps = 0
@@ -175,8 +175,8 @@ class Simulator:
             for currquart in qiter:
                 # cols indices match tip labels b/c we named tips node.idx
                 quartsnps = snparr[:, currquart]
-                self.counts[idx, quartidx] = count_matrix_float(quartsnps)
+                self.counts[idx, quartidx] = count_matrix_int(quartsnps)
                 quartidx += 1
 
             # re-scale by max count for this rep
-            self.counts[idx, ...] /= self.counts[idx, ...].max()
+            #self.counts[idx, ...] /= self.counts[idx, ...].max()
