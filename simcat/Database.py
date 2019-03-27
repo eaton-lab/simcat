@@ -94,8 +94,10 @@ class Database:
         nreps=1,
         theta=0.01,
         seed=123,
-        admix_lower=0.5, 
-        admix_upper=0.5,
+        admix_prop_min=0.05,
+        admix_prop_max=0.50,
+        admix_edge_min=0.5, 
+        admix_edge_max=0.5,
         force=False,
         quiet=False,
         ):
@@ -117,8 +119,10 @@ class Database:
         self.theta = theta
         self.tree = (
             toytree.tree(tree) if isinstance(tree, str) else tree.copy())
-        self.lower = admix_lower
-        self.upper = admix_upper
+        self.admix_edge_min = admix_edge_min
+        self.admix_edge_max = admix_edge_max
+        self.admix_prop_min = admix_prop_min
+        self.admix_prop_max = admix_prop_max
 
         # database label combinations
         self.nedges = nedges
@@ -234,9 +238,15 @@ class Database:
         events = itt.combinations(admixedges.keys(), self.nedges)
         for evt in events:
 
-            # tuple of admixture_edges
+            # tuple of admixture_edges as tuples with ranges to sample.
             admixlist = [
-                (i[0], i[1], self.lower, self.upper, None) for i in evt
+                (
+                    i[0], 
+                    i[1], 
+                    (self.admix_edge_min, self.admix_edge_max), 
+                    (self.admix_prop_min, self.admix_prop_max),
+                )
+                for i in evt
             ]
 
             # (3) ntests: sample duration, magnitude, and params on edges
@@ -280,7 +290,6 @@ class Database:
         """
         Sends jobs to parallel engines to run Simulator.run().
         """
-
         # if outfile exists and not force then find checkpoint
         # ...
 
@@ -290,7 +299,7 @@ class Database:
         # set chunksize based on ncores and nstored_values
         ncores = len(ipyclient)
         self.chunksize = int(np.ceil(self.nstored_values / (ncores * 4)))
-        self.chunksize = min(1000, self.chunksize)
+        self.chunksize = min(500, self.chunksize)
         self.chunksize = max(4, self.chunksize)        
 
         # an iterator to return chunked slices of jobs
