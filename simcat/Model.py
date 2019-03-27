@@ -59,14 +59,19 @@ class Model:
             coalescent units.
 
         admixture_edges (list, tuple):
-            A list of admixture events in the 'admixture interval' format:
-            (source, dest, lower, upper, rate). 
+            A list of admixture events in the 'admixture interval' format:           
+            (source, dest, (edge_min, edge_max), (rate_min, rate_max)). 
+            e.g., (3, 5, 0.5, 0.01)
+            e.g., (3, 5, (0.5, 0.5), (0.05, 0.5))
+            e.g., (1, 3, (0.1, 0.9), 0.05)
             The source sends migrants to destination **backwards in time.**
-            lower and upper are proportions of the length of the edge that 
-            overlaps between the two selected edges. If None then default 
-            values of 0.25 and 0.75 are used, meaning introgression can occur
-            over the middle 50% of the edge. For 'rate' details see the 
-            'admixture type' parameters.
+            The edge min, max are *proportions* of the length of the edge that 
+            overlaps between source and dest edges over which admixture can
+            occur. If None then default values of 0.25 and 0.75 are used, 
+            meaning introgression can occur over the middle 50% of the edge. 
+            The rate min, max are migration rates or proportions that will be
+            either a single value or sampled from a range. For 'rate' details 
+            see the 'admixture type' parameter.
 
         admixture_type (str, int):
             Either "pulsed" (0; default) or "interval" (1). 
@@ -80,8 +85,11 @@ class Model:
             admixture interval and 'rate' is a constant migration rate over 
             this time period.
 
-        theta (int or tuple):
-            Mutation parameter.
+        theta (float, tuple):
+            Mutation parameter. Enter a float, or a tuple of floats to supply
+            a range to sample from over ntests. If None then values will be
+            extracted from the Toytree if it has a 'theta' feature on each 
+            internal node. Else an errror will be raise if no thetas found.
 
         nsnps (int):
             Number of unlinked SNPs simulated (e.g., counts is (nsnps, 16, 16))
@@ -242,7 +250,9 @@ class Model:
     def _get_demography(self):
         """
         returns demography scenario based on an input tree and admixture
-        edge list with events in the format (source, dest, start, end, rate)
+        edge list with events in the format (source, dest, start, end, rate).
+        Time on the tree is defined in coalescent units, which here is 
+        converted to time in 2Ne generations as an int.
         """
         ## Define demographic events for msprime
         demog = set()
