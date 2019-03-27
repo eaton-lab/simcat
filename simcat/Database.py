@@ -136,7 +136,14 @@ class Database:
 
         # progress
         if not self._quiet:
-            print("{} sims: {}".format(self.nstored_values, self.labels))       
+            shortpath = self.labels
+            if os.path.abspath("..") in shortpath:
+                shortpath = shortpath.replace(os.path.abspath(".."), "..")
+            if os.path.expanduser("~") in shortpath:
+                shortpath = shortpath.replace(os.path.expanduser("~"), "~")
+            print("{} labels stored in: {}".format(
+                self.nstored_values, shortpath)
+            )       
 
         # decide on an appropriate chunksize to keep memory load reasonable
         self.chunksize = 100
@@ -353,9 +360,25 @@ class Database:
                     break
                 else:
                     time.sleep(0.5)
+
+            # on success: close the progress counter
+            progress.widget.close()
+            # print finished message
+            # if not self._quiet:
+            #     shortpath = self.counts
+            #     if os.path.abspath("..") in shortpath:
+            #         shortpath = shortpath.replace(os.path.abspath(".."), "..")
+            #     if os.path.expanduser("~") in shortpath:
+            #         shortpath = shortpath.replace(os.path.expanduser("~"), "~")
+            #     print("{} matrices stored in: {}".format(
+            #         self.nstored_values, 
+            #         shortpath)
+            #     )
+
         finally:
-            # copy the tmp array to the 
+            # close the hdf5 handle
             io5.close()
+
 
 
     def run(self, force=True, ipyclient=None, show_cluster=False, auto=False):
