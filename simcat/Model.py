@@ -152,9 +152,9 @@ class Model:
             if not isinstance(self.admixture_edges[0], (list, tuple)):
                 self.admixture_edges = [self.admixture_edges]
             for edge in self.admixture_edges:
-                if len(edge) != 5:
+                if len(edge) != 4:
                     raise ValueError(
-                        "admixture edges should each be a tuple with 5 values")
+                        "admixture edges should each be a tuple with 4 values")
         self.aedges = (0 if not self.admixture_edges else len(self.admixture_edges))
 
         # generate sim parameters from the tree and admixture scenarios
@@ -200,24 +200,33 @@ class Model:
         idx = 0
         for iedge in self.admixture_edges:
 
-            # use rate/prop if provided else sample from exponential
-            if iedge[4]:
-                mrates = np.repeat(iedge[4], self.ntests)
-                mo = (iedge[4], iedge[4])
-            
-            else:                
-                # sample migration rates in range 1/1000 to 1/10 per gen
+            # mtimes: if None then sample from uniform.
+            if iedge[2] is None:
+                intervals = get_all_admix_edges(self.tree, 0.0, 1.0)
+            # if int or float then sample from one position
+            elif isinstance(iedge[2], (float, int)):
+                intervals = get_all_admix_edges(self.tree, iedge[2], iedge[2])
+            # if an iterable then use min max edge overlaps
+            else:
+                start, stop = iedge[2]
+                intervals = get_all_admix_edges(self.tree, start, stop)
+
+            # mrates: if None then sample from uniform
+            if iedge[3] is None:
                 if self.admixture_type:
                     mo = (0.0, 0.1)
                     mrates = np.random.uniform(*mo, size=self.ntests)
-                # sample migration pulse in range 5% to 50% of population
                 else:
                     mo = (0.05, 0.5)
                     mrates = np.random.uniform(*mo, size=self.ntests)
+            elif isinstance(iedge[3], (float, int)):
+                mrates = np.repeat(iedge[3], self.ntests)
+            else:
+                low, high = iedge[2]
+                mrates = np.random.uniform(low, high, size=self.ntests)
 
             # intervals are overlapping edges where admixture can occur. 
             # lower and upper restrict the range along intervals for each 
-            intervals = get_all_admix_edges(self.tree, iedge[2], iedge[3])
             snode = self.tree.treenode.search_nodes(idx=iedge[0])[0]
             dnode = self.tree.treenode.search_nodes(idx=iedge[1])[0]
             ival = intervals[snode.idx, dnode.idx]
