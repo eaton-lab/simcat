@@ -106,10 +106,11 @@ class Model:
             The counts array is expanded to be (nreps * ntests, nsnps, 16, 16)
 
         seed (int):
-            Random number generator
+            Random number generator for numpy.
         """
-        # init random seed
-        np.random.seed(seed)
+        # init random seed: all np and ms random draws proceed from this.
+        # TODO: still not working...
+        self.random = np.random.RandomState()
 
         # hidden argument to turn on debugging
         self._debug = debug
@@ -193,7 +194,7 @@ class Model:
         """
         # dictionary to store arrays of params for each admixture scenario
         self.test_values = {
-            "thetas": np.random.uniform(
+            "thetas": self.random.uniform(
                 low=self.theta[0], high=self.theta[1], size=self.ntests), 
         }
 
@@ -203,39 +204,28 @@ class Model:
 
             # mtimes: if None then sample from uniform.
             if iedge[2] is None:
-                mi = (0.0, 1.0)
-                intervals = get_all_admix_edges(self.tree, mi[0], mi[1])
-                    
-
+                mi = (0.0, 1.0)                  
             # if int or float then sample from one position
             elif isinstance(iedge[2], (float, int)):
                 mi = (iedge[2], iedge[2])
-                intervals = get_all_admix_edges(self.tree, mi[0], mi[1])
-
             # if an iterable then use min max edge overlaps
             else:
                 mi = iedge[2]
-                intervals = get_all_admix_edges(
-                    self.tree, mi[0], mi[1])
+            intervals = get_all_admix_edges(self.tree, mi[0], mi[1])
 
             # mrates: if None then sample from uniform
             if iedge[3] is None:
                 if self.admixture_type:
                     mr = (0.0, 0.1)
-                    mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
                 else:
                     mr = (0.05, 0.5)
-                    mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
-
             # if a float then use same for all            
             elif isinstance(iedge[3], (float, int)):
                 mr = (iedge[3], iedge[3])
-                mrates = np.repeat(mr[0], self.ntests)
-
             # if an iterable then sample from range
             else:
                 mr = iedge[3]
-                mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
+            mrates = self.random.uniform(mr[0], mr[1], size=self.ntests)
 
             # intervals are overlapping edges where admixture can occur. 
             # lower and upper restrict the range along intervals for each 
@@ -244,12 +234,12 @@ class Model:
             ival = intervals.get((snode.idx, dnode.idx))
             # intervals mode
             if self.admixture_type:
-                ui = np.random.uniform(ival[0], ival[1], self.ntests * 2)
+                ui = self.random.uniform(ival[0], ival[1], self.ntests * 2)
                 ui = ui.reshape((self.ntests, 2))
                 mtimes = np.sort(ui, axis=1)
             # pulsed mode
             else:
-                ui = np.random.uniform(ival[0], ival[1], self.ntests)
+                ui = self.random.uniform(ival[0], ival[1], self.ntests)
                 null = np.repeat(None, self.ntests)
                 mtimes = np.stack((ui, null), axis=1)
 
@@ -374,6 +364,7 @@ class Model:
 
         # msprime simulation to make tree_sequence generator
         sim = ms.simulate(
+            random_seed=self.random.randint(1e9),
             migration_matrix=migmat,
             num_replicates=self.nsnps * 1000,                 # ensures SNPs 
             population_configurations=self._get_popconfig(),  # applies Ne
@@ -407,7 +398,10 @@ class Model:
                     # wrap for _msprime.LibraryError
                     try:
                         # get next tree and drop mutations 
-                        muts = ms.mutate(next(sims), rate=self.mut)
+                        muts = ms.mutate(
+                            tree_sequence=next(sims), 
+                            rate=self.mut, 
+                            random_seed=self.random.randint(1e9))
                         bingenos = muts.genotype_matrix()
 
                         # convert binary SNPs to {0,1,2,3} using JC 
