@@ -17,6 +17,7 @@ import numpy as np
 import msprime as ms
 import itertools as itt
 from scipy.special import comb
+from _msprime import LibraryError
 
 from .jitted import count_matrix_int, mutate_jc
 from .utils import get_all_admix_edges, SimcatError
@@ -36,7 +37,8 @@ class Model:
         nsnps=5000,
         ntests=1,
         nreps=1,
-        seed=None,
+        exclude_sisters=False,
+        seed=None,        
         debug=False,
         run=False,
         ):
@@ -104,6 +106,11 @@ class Model:
             Number of technical replicates to run using the same param sets.
             The counts array is expanded to be (nreps * ntests, nsnps, 16, 16)
 
+        exclude_sisters (bool):
+            Exclude admixture edges between sister lineages. These are often
+            difficult to detect and it may be of interest to run simulations
+            without them included.
+
         seed (int):
             Random number generator
         """
@@ -146,6 +153,7 @@ class Model:
                 node.name = str(node.idx)
 
         # check formats of admixture args
+        self.exclude_sisters = exclude_sisters
         self.admixture_edges = (admixture_edges if admixture_edges else [])
         self.admixture_type = (1 if admixture_type in (1, "interval") else 0)
         if self.admixture_edges:
@@ -202,57 +210,71 @@ class Model:
 
             # mtimes: if None then sample from uniform.
             if iedge[2] is None:
-                intervals = get_all_admix_edges(self.tree, 0.0, 1.0)
+                mi = (0.0, 1.0)
+                intervals = get_all_admix_edges(
+                    self.tree, mi[0], mi[1], self.exclude_sisters)
+
             # if int or float then sample from one position
             elif isinstance(iedge[2], (float, int)):
-                intervals = get_all_admix_edges(self.tree, iedge[2], iedge[2])
+                mi = (iedge[2], iedge[2])
+                intervals = get_all_admix_edges(
+                    self.tree, mi[0], mi[1], self.exclude_sisters)
+
             # if an iterable then use min max edge overlaps
             else:
-                start, stop = iedge[2]
-                intervals = get_all_admix_edges(self.tree, start, stop)
+                mi = iedge[2]
+                intervals = get_all_admix_edges(
+                    self.tree, mi[0], mi[1], self.exclude_sisters)
 
             # mrates: if None then sample from uniform
             if iedge[3] is None:
                 if self.admixture_type:
-                    mo = (0.0, 0.1)
-                    mrates = np.random.uniform(*mo, size=self.ntests)
+                    mr = (0.0, 0.1)
+                    mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
                 else:
-                    mo = (0.05, 0.5)
-                    mrates = np.random.uniform(*mo, size=self.ntests)
+                    mr = (0.05, 0.5)
+                    mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
+
+            # if a float then use same for all            
             elif isinstance(iedge[3], (float, int)):
-                mrates = np.repeat(iedge[3], self.ntests)
+                mr = (iedge[3], iedge[3])
+                mrates = np.repeat(mr[0], self.ntests)
+
+            # if an iterable then sample from range
             else:
-                low, high = iedge[2]
-                mrates = np.random.uniform(low, high, size=self.ntests)
+                mr = iedge[3]
+                mrates = np.random.uniform(mr[0], mr[1], size=self.ntests)
 
             # intervals are overlapping edges where admixture can occur. 
             # lower and upper restrict the range along intervals for each 
             snode = self.tree.treenode.search_nodes(idx=iedge[0])[0]
             dnode = self.tree.treenode.search_nodes(idx=iedge[1])[0]
-            ival = intervals[snode.idx, dnode.idx]
 
-            # intervals mode
-            if self.admixture_type:
-                ui = np.random.uniform(ival[0], ival[1], self.ntests * 2)
-                ui = ui.reshape((self.ntests, 2))
-                mtimes = np.sort(ui, axis=1)  
-            # pulsed mode
-            else:
-                ui = np.random.uniform(ival[0], ival[1], self.ntests)
-                null = np.repeat(None, self.ntests)
-                mtimes = np.stack((ui, null), axis=1)
+            # if interval exists (e.g., not excluded as a sister)
+            ival = intervals.get((snode.idx, dnode.idx))
+            if ival:
+                # intervals mode
+                if self.admixture_type:
+                    ui = np.random.uniform(ival[0], ival[1], self.ntests * 2)
+                    ui = ui.reshape((self.ntests, 2))
+                    mtimes = np.sort(ui, axis=1)
+                # pulsed mode
+                else:
+                    ui = np.random.uniform(ival[0], ival[1], self.ntests)
+                    null = np.repeat(None, self.ntests)
+                    mtimes = np.stack((ui, null), axis=1)
 
-            # store values only if migration is high enough to be detectable
-            self.test_values[idx] = {
-                "mrates": mrates, 
-                "mtimes": mtimes,
-            }
-            idx += 1
+                # store values only if migration is high enough to be detectable
+                self.test_values[idx] = {
+                    "mrates": mrates, 
+                    "mtimes": mtimes,
+                }
+                idx += 1
 
             # print info
             if self._debug:
                 print("migration: edge({}->{}) time({:.3f}, {:.3f}), rate({:.3f}, {:.3f})"
-                    .format(snode.idx, dnode.idx, ival[0], ival[1], mo[0], mo[1]),
+                    .format(snode.idx, dnode.idx, ival[0], ival[1], mr[0], mr[1]),
                     file=sys.stderr)
 
 
@@ -393,17 +415,23 @@ class Model:
                 nfail = 0
                 while nsnps < self.nsnps:
 
-                    # get next tree and drop mutations 
-                    muts = ms.mutate(next(sims), rate=self.mut)
-                    bingenos = muts.genotype_matrix()
+                    # wrap for _msprime.LibraryError
+                    try:
+                        # get next tree and drop mutations 
+                        muts = ms.mutate(next(sims), rate=self.mut)
+                        bingenos = muts.genotype_matrix()
 
-                    # convert binary SNPs to {0,1,2,3} using JC 
-                    if bingenos.size:
-                        sitegenos = mutate_jc(bingenos, self.ntips)
-                        snparr[nsnps] = sitegenos
-                        nsnps += 1
-                    else:
-                        nfail += 1
+                        # convert binary SNPs to {0,1,2,3} using JC 
+                        if bingenos.size:
+                            sitegenos = mutate_jc(bingenos, self.ntips)
+                            snparr[nsnps] = sitegenos
+                            nsnps += 1
+                        else:
+                            nfail += 1
+
+                    # this can occur with v. small Ne, skip to next.
+                    except LibraryError:
+                        pass
 
                 if self._debug:
                     print("{} trees to get {} with mutations"
