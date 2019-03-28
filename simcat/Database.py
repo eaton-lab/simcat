@@ -131,8 +131,7 @@ class Database:
         self.ntests = ntests        
         self.nreps = nreps
         self.nsnps = nsnps
-        admixedges = get_all_admix_edges(
-            self.tree, exclude_sisters=self.exclude_sisters)
+        admixedges = get_all_admix_edges(self.tree, 0.0, 1.0, exclude_sisters)
         nevents = int(comb(N=len(admixedges), k=self.nedges))
         nvalues = nevents * self.ntests * self.nreps 
         self.nstored_values = nvalues
@@ -241,7 +240,7 @@ class Database:
             dtype=np.float64)
 
         # get all admixture edges that can be drawn on this tree
-        admixedges = get_all_admix_edges(itree)
+        admixedges = get_all_admix_edges(itree, 0.0, 1.0, self.exclude_sisters)
 
         # (2) nevents: iterate over each edge or pair of edges (nedges)        
         eidx = 0
@@ -265,7 +264,6 @@ class Database:
                 ntests=self.ntests,
                 theta=self.theta,
                 admixture_edges=admixlist,
-                exclude_sisters=self.exclude_sisters,
             )
 
             # (4) nreps: fill the same param values repeated times
