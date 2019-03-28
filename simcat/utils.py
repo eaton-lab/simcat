@@ -15,7 +15,7 @@ class SimcatError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 
-def get_all_admix_edges(ttree, lower=0.25, upper=0.75, include_sisters=True):
+def get_all_admix_edges(ttree, lower=0.25, upper=0.75, exclude_sisters=False):
     """
     Find all possible admixture edges on a tree. Edges are unidirectional, 
     so the source and dest need to overlap in time interval. To retrict 
@@ -44,7 +44,7 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.75, include_sisters=True):
             if not any([snode.is_root(), dnode.is_root(), dnode == snode]):
 
                 ## [option] skip sisters
-                if (not include_sisters) & (dnode.up == snode.up):
+                if (exclude_sisters) & (dnode.up == snode.up):
                     continue
 
                 ## check for overlap
