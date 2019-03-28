@@ -8,13 +8,13 @@ Pulls a slice from the database and runs simulation to get SNP counts.
 from __future__ import print_function
 from builtins import range
 
-
 import h5py
 import toytree
 import numpy as np
 import msprime as ms
 import itertools as itt
 from scipy.special import comb
+from _msprime import LibraryError
 
 from .jitted import count_matrix_int, mutate_jc
 
@@ -45,7 +45,7 @@ class Simulator:
             self.atimes = io5["admix_times"][slice0:slice1, ...]
             self.asources = io5["admix_sources"][slice0:slice1, ...]
             self.atargets = io5["admix_targets"][slice0:slice1, ...]
-            self.aprops = io5["admix_props"][slice0:slice1, ...] 
+            self.aprops = io5["admix_props"][slice0:slice1, ...]
 
             # attribute metadata
             self.tree = toytree.tree(io5.attrs["tree"])
@@ -80,7 +80,7 @@ class Simulator:
         sim = ms.simulate(
             # mutation_rate=self.mut,
             # length=self.length,
-            num_replicates=self.nsnps * 1000,                 # ensures SNPs 
+            num_replicates=self.nsnps * 10000,                # ensures SNPs 
             population_configurations=self._get_popconfig(),  # applies Ne
             demographic_events=self._get_demography(),        # applies popst. 
         )
@@ -159,15 +159,21 @@ class Simulator:
             nsnps = 0
             while nsnps < self.nsnps:
 
-                # get next tree and drop mutations 
-                muts = ms.mutate(next(sims), rate=self.mut)
-                bingenos = muts.genotype_matrix()
+                # wrap for _msprime.LibraryError 
+                try:
+                    # get next tree and drop mutations 
+                    muts = ms.mutate(next(sims), rate=self.mut)
+                    bingenos = muts.genotype_matrix()
 
-                # convert binary SNPs to {0,1,2,3} using JC 
-                if bingenos.size:
-                    sitegenos = mutate_jc(bingenos, self.ntips)
-                    snparr[nsnps] = sitegenos
-                    nsnps += 1
+                    # convert binary SNPs to {0,1,2,3} using JC 
+                    if bingenos.size:
+                        sitegenos = mutate_jc(bingenos, self.ntips)
+                        snparr[nsnps] = sitegenos
+                        nsnps += 1
+
+                # This can occur when pop size is v small, just skip to next.
+                except LibraryError:
+                    pass
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
             quartidx = 0
@@ -177,6 +183,3 @@ class Simulator:
                 quartsnps = snparr[:, currquart]
                 self.counts[idx, quartidx] = count_matrix_int(quartsnps)
                 quartidx += 1
-
-            # re-scale by max count for this rep
-            #self.counts[idx, ...] /= self.counts[idx, ...].max()
