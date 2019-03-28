@@ -98,6 +98,7 @@ class Database:
         admix_prop_max=0.50,
         admix_edge_min=0.5, 
         admix_edge_max=0.5,
+        exclude_sisters=False,
         force=False,
         quiet=False,
         ):
@@ -123,13 +124,15 @@ class Database:
         self.admix_edge_max = admix_edge_max
         self.admix_prop_min = admix_prop_min
         self.admix_prop_max = admix_prop_max
+        self.exclude_sisters = exclude_sisters
 
         # database label combinations
         self.nedges = nedges
         self.ntests = ntests        
         self.nreps = nreps
         self.nsnps = nsnps
-        admixedges = get_all_admix_edges(self.tree)
+        admixedges = get_all_admix_edges(
+            self.tree, exclude_sisters=self.exclude_sisters)
         nevents = int(comb(N=len(admixedges), k=self.nedges))
         nvalues = nevents * self.ntests * self.nreps 
         self.nstored_values = nvalues
@@ -262,6 +265,7 @@ class Database:
                 ntests=self.ntests,
                 theta=self.theta,
                 admixture_edges=admixlist,
+                exclude_sisters=self.exclude_sisters,
             )
 
             # (4) nreps: fill the same param values repeated times
