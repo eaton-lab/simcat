@@ -37,7 +37,6 @@ class Model:
         nsnps=5000,
         ntests=1,
         nreps=1,
-        exclude_sisters=False,
         seed=None,        
         debug=False,
         run=False,
@@ -106,11 +105,6 @@ class Model:
             Number of technical replicates to run using the same param sets.
             The counts array is expanded to be (nreps * ntests, nsnps, 16, 16)
 
-        exclude_sisters (bool):
-            Exclude admixture edges between sister lineages. These are often
-            difficult to detect and it may be of interest to run simulations
-            without them included.
-
         seed (int):
             Random number generator
         """
@@ -153,7 +147,6 @@ class Model:
                 node.name = str(node.idx)
 
         # check formats of admixture args
-        self.exclude_sisters = exclude_sisters
         self.admixture_edges = (admixture_edges if admixture_edges else [])
         self.admixture_type = (1 if admixture_type in (1, "interval") else 0)
         if self.admixture_edges:
@@ -211,20 +204,19 @@ class Model:
             # mtimes: if None then sample from uniform.
             if iedge[2] is None:
                 mi = (0.0, 1.0)
-                intervals = get_all_admix_edges(
-                    self.tree, mi[0], mi[1], self.exclude_sisters)
+                intervals = get_all_admix_edges(self.tree, mi[0], mi[1])
+                    
 
             # if int or float then sample from one position
             elif isinstance(iedge[2], (float, int)):
                 mi = (iedge[2], iedge[2])
-                intervals = get_all_admix_edges(
-                    self.tree, mi[0], mi[1], self.exclude_sisters)
+                intervals = get_all_admix_edges(self.tree, mi[0], mi[1])
 
             # if an iterable then use min max edge overlaps
             else:
                 mi = iedge[2]
                 intervals = get_all_admix_edges(
-                    self.tree, mi[0], mi[1], self.exclude_sisters)
+                    self.tree, mi[0], mi[1])
 
             # mrates: if None then sample from uniform
             if iedge[3] is None:
@@ -249,27 +241,24 @@ class Model:
             # lower and upper restrict the range along intervals for each 
             snode = self.tree.treenode.search_nodes(idx=iedge[0])[0]
             dnode = self.tree.treenode.search_nodes(idx=iedge[1])[0]
-
-            # if interval exists (e.g., not excluded as a sister)
             ival = intervals.get((snode.idx, dnode.idx))
-            if ival:
-                # intervals mode
-                if self.admixture_type:
-                    ui = np.random.uniform(ival[0], ival[1], self.ntests * 2)
-                    ui = ui.reshape((self.ntests, 2))
-                    mtimes = np.sort(ui, axis=1)
-                # pulsed mode
-                else:
-                    ui = np.random.uniform(ival[0], ival[1], self.ntests)
-                    null = np.repeat(None, self.ntests)
-                    mtimes = np.stack((ui, null), axis=1)
+            # intervals mode
+            if self.admixture_type:
+                ui = np.random.uniform(ival[0], ival[1], self.ntests * 2)
+                ui = ui.reshape((self.ntests, 2))
+                mtimes = np.sort(ui, axis=1)
+            # pulsed mode
+            else:
+                ui = np.random.uniform(ival[0], ival[1], self.ntests)
+                null = np.repeat(None, self.ntests)
+                mtimes = np.stack((ui, null), axis=1)
 
-                # store values only if migration is high enough to be detectable
-                self.test_values[idx] = {
-                    "mrates": mrates, 
-                    "mtimes": mtimes,
-                }
-                idx += 1
+            # store values only if migration is high enough to be detectable
+            self.test_values[idx] = {
+                "mrates": mrates, 
+                "mtimes": mtimes,
+            }
+            idx += 1
 
             # print info
             if self._debug:
