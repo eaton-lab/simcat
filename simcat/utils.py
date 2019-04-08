@@ -65,6 +65,17 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.75, exclude_sisters=False):
 
 
 
+def tile_reps(array, nreps):
+    "used to fill labels in the simcat.Database for replicates"
+    ts = array.size
+    nr = nreps
+    result = np.array(
+        np.tile(array, nr)
+        .reshape((nr, ts))
+        .T.flatten())
+    return result
+
+
 # def progress_bar(njobs, nfinished, start, message=""):
 #     "prints a progress bar"
 #     ## measure progress

@@ -20,7 +20,7 @@ from scipy.special import comb
 from .Model import Model
 from .Simulator import Simulator
 from .parallel import Parallel
-from .utils import get_all_admix_edges, SimcatError, Progress
+from .utils import get_all_admix_edges, SimcatError, Progress, tile_reps
 
 
 ############################################################################
@@ -408,14 +408,3 @@ class Database:
             )
         pool.wrap_run()
 
-
-
-def tile_reps(array, nreps):
-    "used to fill labels in the simcat.Database for replicates"
-    ts = array.size
-    nr = nreps
-    result = np.array(
-        np.tile(array, nr)
-        .reshape((nr, ts))
-        .T.flatten())
-    return result
