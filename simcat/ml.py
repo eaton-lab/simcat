@@ -15,9 +15,11 @@ import pandas as pd
 from sklearn.manifold import TSNE
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.decomposition import NMF
-# from sklearn.metrics import confusion_matrix
-# from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
+# from sklearn.metrics import confusion_matrix
+
+from .utils import get_all_admix_edges
+from .Model import Model
 
 """
 ## Ideas 
@@ -262,51 +264,88 @@ class Analysis(object):
 
 
 
-    def validate_model(self):
+    def _run(self, ipyclient, children=[]):
+
+        # load-balancer for single-threaded execution jobs
+        lbview = ipyclient.load_balanced_view()
+
+        # get all edges on the tree
+        edges = get_all_admix_edges(self.tree)
+
+        # other params to iterate over
+        aprops = np.arange(0.05, 0.30, 0.05)
+        nsnps = np.arange(5000, 55000, 5000)
+        reps = np.arange(10)
+
+        # total number of samples
+        ns = len(edges) * aprops.size * nsnps.size * reps.size
+
+        # build empty data frame
+        validate = pd.DataFrame({
+            "admix_edge": [0] * ns,
+            "admix_prop": 0,
+            "nsnps": 0,
+            "est": 0,
+            "prob": 0,
+        }, columns=["nsnps", "admix_edge", "admix_prop", "est", "prob"],
+        )
+
+        # dataframe index 
+        idx = 0
+        rasyncs = {}
+
+        # simulate a 
+        for edge in edges:
+            for prop in aprops:
+                for snp in nsnps:
+                    for rep in reps:
+
+                        # submit jobs
+                        kwargs = {
+                            'tree': self.tree, 
+                            'admixture_edges': [(edge[0], edge[1], 0.5, prop)],
+                            'nsnps': snp,
+                            'run': True,
+                        }
+                        rasyncs[idx] = lbview.apply(Model, **kwargs)
+
+                        # fill labels
+                        validate.loc[idx, :3] = snp, edge, prop
+
+
+                        # edgestr = str(edge).replace(" ", "")[1:-1]
+                        # testX = test.counts.flatten().reshape((1, -1))
+                        # est = self.model.predict(testX)
+                        # probs = self.model.predict_proba(testX)[0]
+                        # tidx = list(self.model.classes_).index(edgestr)
+                        # prob = probs[tidx]
+                        # validate.loc[idx] = rep, nsnps, edgestr, magn, est, prob
+                        idx += 1
+
+
+    
+    def run(self, force=True, ipyclient=None, show_cluster=False, auto=False):
         """
         Build a DataFrame of predictive accuracy scores for a trained model
         when new data is simulated on it under a range of input settings.
 
         Parameters:
         -----------
-
+        ipyclient (ipyparallel.Client object):
+            A connected ipyclient object. If ipcluster instance is 
+            not running on the default profile then ...
         """
+        # distribute filling jobs in parallel
+        pool = Parallel(
+            tool=self,
+            rkwargs={},
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            )
+        pool.wrap_run()
 
 
-        aprop = np.array([0.05, 0.10, 0.25, 0.50])
-        nsnps = np.array([5000, 10000, 25000, 50000])
-        reps = np.arange(10)
-        ns = aprop.size * nsnps.size * reps.size
-
-        # 
-        validate = pd.DataFrame({
-            "admix_edge": [0] * ns,
-            "admix_prop": 0,
-            "nsnps": 0,
-            "rep": 0,
-            "est": 0,
-            "prob": 0,
-        }, columns=["rep", "nsnps", "admix_edge", "admix_prop", "est", "prob"],
-        )
-
-
-        # 
-        idx = 0
-        for magn in [0.05, 0.1, 0.25, 0.5]:
-            for nsnps in [5000, 10000, 25000, 50000]:
-                for rep in range(10):
-                    #test = simcat.Model(ttree, [(1, 3, 0.5, 0.2)], nsnps=nsnps, run=True)
-                    #data[idx] = test.counts.flatten().reshape((1, -1))
-                    #forest.predict(test.counts.flatten().reshape((1, -1)))
-                    #pred = forest.predict(test.counts.flatten().reshape((1, -1)))
-                    #conf = sorted(forest.predict_proba(test.counts.flatten().reshape((1, -1)))[0], reverse=True)[:5]
-                    #print(idx, magn, nsnps, pred, conf)
-                    
-                    validate.loc[0] = rep, nsnps, "1,3", magn, "est", "prob"
-                    idx += 1
-
-
-    
 
     def tsne_plot(self):
 
