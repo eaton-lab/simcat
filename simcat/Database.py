@@ -216,7 +216,7 @@ class Database:
 
         # store count matrices (the data)
         self.o5.create_dataset("counts", 
-            shape=(self.nstored_values, nquarts, 16, 16),
+            shape=(self.nstored_values, nquarts*16*16),
             dtype=np.int64)
 
         # the labels: for pulsed migration admix_tstarts but not admix_tends

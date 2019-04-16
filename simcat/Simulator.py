@@ -57,7 +57,7 @@ class Simulator:
             self.nquarts = int(comb(N=self.ntips, k=4))  # scipy.special.comb
             self.nvalues = self.slice1 - self.slice0
             self.counts = np.zeros(
-                (self.nvalues, self.nquarts, 16, 16), dtype=np.int64) 
+                (self.nvalues, self.nquarts*16*16), dtype=np.int64) 
 
         # calls run and returns filled counts matrix
         if run:
@@ -149,6 +149,9 @@ class Simulator:
         # iterate over ntests (different sampled simulation parameters)
         for idx in range(self.nvalues):
 
+            # temporarily format these as stacked matrices
+            tmpcounts = np.zeros((self.nquarts,16,16),dtype= np.int64)
+
             # get tree_sequence for this set
             sims = self._get_tree_sequence(idx)
 
@@ -181,5 +184,8 @@ class Simulator:
             for currquart in qiter:
                 # cols indices match tip labels b/c we named tips node.idx
                 quartsnps = snparr[:, currquart]
-                self.counts[idx, quartidx] = count_matrix_int(quartsnps)
+                # save as stacked matrices
+                tmpcounts[quartidx] = count_matrix_int(quartsnps)
+                # save flattened to counts
+                self.counts[idx] = np.ravel(tmpcounts)
                 quartidx += 1
