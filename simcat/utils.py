@@ -231,6 +231,7 @@ class Progress(object):
             int(100 * (self.bar.value / self.njobs)),
             elapsed,
         )
+
         return s1 + inner + s2
 
     def display(self):

@@ -27,11 +27,13 @@ class Parallel(object):
     Connect or launch ipcluster and wrap jobs running on Client engines so 
     that engines can be interrupted or killed with a pleasant cleanup.
     """
-    def __init__(self, tool, rkwargs=None, ipyclient=None, show_cluster=True, auto=False):
+    def __init__(self, tool, rkwargs=None, ipyclient=None, show_cluster=True, quiet = False, auto=False):
 
         # if no kwargs then empty dict
         if rkwargs is None:
             rkwargs = {}
+
+        self._quiet = quiet
 
         # the tool with a ._run() func and its run kwargs to be parallelized
         self.tool = tool
@@ -48,10 +50,12 @@ class Parallel(object):
         self.widget = Box(
             children=[self.message], 
             layout={"margin": "5px 0px 5px 0px"})
+
         self.update_message("Establishing parallel connection: ...")
 
-        # show the widget message
-        display(self.widget)
+        if not self._quiet:
+            # show the widget message
+            display(self.widget)
 
 
     def update_message(self, inner):

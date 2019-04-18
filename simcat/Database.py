@@ -326,7 +326,8 @@ class Database:
         # catch results as they return and enter into H5 to keep mem low.
         progress = Progress(njobs, "Simulating count matrices", children)
         progress.increment_all(self.checkpoint)
-        progress.display()
+        if not self._quiet:
+            progress.display()
         done = self.checkpoint
         try:
             io5 = h5py.File(self.counts, mode='r+')
@@ -405,6 +406,7 @@ class Database:
             ipyclient=ipyclient,
             show_cluster=show_cluster,
             auto=auto,
+            quiet=self._quiet,
             )
         pool.wrap_run()
 
