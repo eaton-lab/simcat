@@ -50,7 +50,8 @@ class Streamer:
 	    admix_edge_max=0.5,
 	    exclude_sisters=False,
 	    force=False,
-	    quiet=False,):
+	    quiet=False,
+		one_hot_y=True):
 
 		# location of databases and model
 		self.workdir = (
@@ -73,9 +74,12 @@ class Streamer:
 		self.force = force
 		self.quiet = quiet
 
+		# dict mapping source/dest combos to integers
+		self.inv_intdict = None
+
 		self.starting_tree = starting_tree
 
-	def generate_dat(self):
+	def generate_dat(self,one_hot_y=True):
 		while 1:
 			db_idx=str(np.random.randint(100000000))
 			tree = self.starting_tree
@@ -95,7 +99,7 @@ class Streamer:
 				theta=self.theta,
 				seed=self.seed,
 				force=self.force,
-				quiet=True
+				quiet=True,
 				)
 			tmpdb.run()
 			data = Analysis(name=dbname, workdir=self.workdir, scale=1, run=False,quiet=True)
@@ -110,8 +114,11 @@ class Streamer:
 			else:    ## Show an error ##
 			    print("Error: %s file not found" % data.db_labels)
 
-			yield (data.X,data.y)
-
+			if one_hot_y:
+				self.inv_intdict = dict([[v,k] for k,v in enumerate(np.unique(data.y))])
+				y = self.one_hot_enc(data.y,self.inv_intdict)
+			else: y = data.y
+			yield (data.X,y)
 
 	def run(self):
 		if self.model:
@@ -128,7 +135,25 @@ class Streamer:
 				)
 			tmpdb.run()
 
+	def one_hot_enc(self, y, inv_intdict):
+		'''
+		y is a list of values
+		inv_intdict is a dict mapping yvalues to integers
+		'''
+		onehotvect = np.zeros((len(y),len(inv_intdict)),dtype = np.int64)
+		for i in range(len(y)):
+			onehotvect[i][inv_intdict[y[i]]] += 1
+		return(onehotvect)
 
+	def one_hot_dec(self, y_onehot, intdict):
+		'''
+		y_onehot is an array of one-hot encoded y values
+		intdict is a dict mapping integers to yvalues
+		'''
+		onehotvect = np.zeros((len(y),len(inv_scendict)),dtype = np.int64)
+		for i in range(len(y)):
+			onehotvect[i][inv_scendict[y[i]]] += 1
+		return(onehotvect)
 
 
 
