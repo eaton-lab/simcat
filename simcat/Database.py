@@ -99,7 +99,7 @@ class Database:
         admix_edge_min=0.5, 
         admix_edge_max=0.5,
         exclude_sisters=False,
-        seqgen=True
+        seqgen=True,
         force=False,
         quiet=False,
         ):
