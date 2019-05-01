@@ -15,8 +15,10 @@ import msprime as ms
 import itertools as itt
 from scipy.special import comb
 from _msprime import LibraryError
+from subprocess import Popen, PIPE
+import os
 
-from .jitted import count_matrix_int, mutate_jc
+from .jitted import count_matrix_int, mutate_jc, base_to_int
 
 
 #############################################################################
@@ -26,7 +28,7 @@ class Simulator:
     building the msprime simulations calls, and then calling .run() to fill
     count matrices and return them. 
     """
-    def __init__(self, database_file, slice0, slice1, run=True):
+    def __init__(self, database_file, slice0, slice1, seqgen = True, run=True):
        
         # location of data
         self.database = database_file
@@ -36,6 +38,8 @@ class Simulator:
         # parameter transformations
         self.mut = 1e-7
         self.theta = None
+
+        self.seqgen = seqgen
 
         # open view to the data
         with h5py.File(self.database, 'r') as io5:
@@ -160,23 +164,43 @@ class Simulator:
 
             # continue until all SNPs are sampled from generator
             nsnps = 0
-            while nsnps < self.nsnps:
+            if not self.seqgen:
+                while nsnps < self.nsnps:
 
-                # wrap for _msprime.LibraryError 
-                try:
-                    # get next tree and drop mutations 
-                    muts = ms.mutate(next(sims), rate=self.mut)
-                    bingenos = muts.genotype_matrix()
+                    # wrap for _msprime.LibraryError 
+                    try:
+                        # get next tree and drop mutations 
+                        muts = ms.mutate(next(sims), rate=self.mut)
+                        bingenos = muts.genotype_matrix()
 
-                    # convert binary SNPs to {0,1,2,3} using JC 
-                    if bingenos.size:
-                        sitegenos = mutate_jc(bingenos, self.ntips)
-                        snparr[nsnps] = sitegenos
-                        nsnps += 1
+                        # convert binary SNPs to {0,1,2,3} using JC 
+                        if bingenos.size:
+                            sitegenos = mutate_jc(bingenos, self.ntips)
+                            snparr[nsnps] = sitegenos
+                            nsnps += 1
 
-                # This can occur when pop size is v small, just skip to next.
-                except LibraryError:
-                    pass
+                    # This can occur when pop size is v small, just skip to next.
+                    except LibraryError:
+                        pass
+
+            elif self.seqgen:
+                while nsnps < self.nsnps:
+                    newtree = next(next(sims).trees()).newick()
+                    print(newtree)
+                    filename = str(np.random.randint(1e5)) +'.newick'
+                    with open(filename,'w') as f:
+                        f.write(str(newtree))
+                    process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
+                    stdout, stderr = process.communicate()
+                    result=stdout.decode("utf-8").split('\n')[:-1]
+                    geno = dict([i.split(' ') for i in result[1:]])
+                    ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
+                    snparr[nsnps] = base_to_int(ordered)
+                    if os.path.isfile(filename):
+                        os.remove(filename)
+                    else:    ## Show an error ##
+                        print("Error: %s file not found" % filename)
+                    nsnps += 1
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
             quartidx = 0
