@@ -322,7 +322,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_values, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1,seqgen=self._seqgen)
+                args = (self.labels, slice0, slice1,self._seqgen)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
