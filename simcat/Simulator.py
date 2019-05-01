@@ -187,7 +187,7 @@ class Simulator:
                 while nsnps < self.nsnps:
                     newtree = next(next(sims).trees()).newick()
                     print(newtree)
-                    filename = str(np.random.randint(1e5)) +'.newick'
+                    filename = str(np.random.randint(1e10)) +'.newick'
                     with open(filename,'w') as f:
                         f.write(str(newtree))
                     process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
