@@ -17,6 +17,7 @@ from scipy.special import comb
 from _msprime import LibraryError
 from subprocess import Popen, PIPE
 import os
+import pyvolve
 
 from .jitted import count_matrix_int, mutate_jc, base_to_int
 
@@ -184,22 +185,29 @@ class Simulator:
                         pass
 
             elif self.seqgen:
+                my_model = pyvolve.Model('nucleotide')
+                my_partition = pyvolve.Partition(models = my_model, size = 1)
                 while nsnps < self.nsnps:
                     newtree = next(next(sims).trees()).newick()
-                    print(newtree)
-                    filename = str(np.random.randint(1e10)) +'.newick'
-                    with open(filename,'w') as f:
-                        f.write(str(newtree))
-                    process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
-                    stdout, stderr = process.communicate()
-                    result=stdout.decode("utf-8").split('\n')[:-1]
-                    geno = dict([i.split(' ') for i in result[1:]])
+                    #print(newtree)
+                    #filename = str(np.random.randint(1e10)) +'.newick'
+                    #with open(filename,'w') as f:
+                    #    f.write(str(newtree))
+                    #process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
+                    #stdout, stderr = process.communicate()
+                    #result=stdout.decode("utf-8").split('\n')[:-1]
+                    #geno = dict([i.split(' ') for i in result[1:]])
+
+                    t = pyvolve.read_tree(tree = newtree,scale_tree = self.mut)
+                    my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
+                    my_evolver(seqfile=None)
+                    geno=my_evolver.leaf_seqs
                     ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
                     snparr[nsnps] = base_to_int(ordered)
-                    if os.path.isfile(filename):
-                        os.remove(filename)
-                    else:    ## Show an error ##
-                        print("Error: %s file not found" % filename)
+                    #if os.path.isfile(filename):
+                    #    os.remove(filename)
+                    #else:    ## Show an error ##
+                    #    print("Error: %s file not found" % filename)
                     nsnps += 1
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
