@@ -10,6 +10,7 @@ from builtins import range
 
 import h5py
 import toytree
+from toytree.SeqGen import SeqGen
 import numpy as np
 import msprime as ms
 import itertools as itt
@@ -29,7 +30,7 @@ class Simulator:
     building the msprime simulations calls, and then calling .run() to fill
     count matrices and return them. 
     """
-    def __init__(self, database_file, slice0, slice1, seqgen = True, run=True):
+    def __init__(self, database_file, slice0, slice1, mutator='msprime', run=True):
        
         # location of data
         self.database = database_file
@@ -40,7 +41,7 @@ class Simulator:
         self.mut = 1e-7
         self.theta = None
 
-        self.seqgen = seqgen
+        self.mutator = mutator
 
         # open view to the data
         with h5py.File(self.database, 'r') as io5:
@@ -165,7 +166,7 @@ class Simulator:
 
             # continue until all SNPs are sampled from generator
             nsnps = 0
-            if not self.seqgen:
+            if self.mutator == 'msprime':
                 while nsnps < self.nsnps:
 
                     # wrap for _msprime.LibraryError 
@@ -184,7 +185,7 @@ class Simulator:
                     except LibraryError:
                         pass
 
-            elif self.seqgen:
+            elif self.mutator == 'pyvolve':
                 my_model = pyvolve.Model('nucleotide')
                 my_partition = pyvolve.Partition(models = my_model, size = 1)
                 while nsnps < self.nsnps:
@@ -208,6 +209,19 @@ class Simulator:
                     #    os.remove(filename)
                     #else:    ## Show an error ##
                     #    print("Error: %s file not found" % filename)
+                    nsnps += 1
+
+            elif self.mutator == 'toytree':
+                while nsnps < self.nsnps:
+                    newtree = toytree.tree(next(next(sims).trees()).newick())
+                    seq = SeqGen(
+                        tree,
+                        model="JC",
+                        seed=123,
+                    )
+                    geno=seq.mutate(1)
+                    ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
+                    snparr[nsnps] = base_to_int(ordered)
                     nsnps += 1
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...

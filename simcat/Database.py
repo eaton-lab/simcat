@@ -99,7 +99,7 @@ class Database:
         admix_edge_min=0.5, 
         admix_edge_max=0.5,
         exclude_sisters=False,
-        seqgen=True,
+        mutator='msprime',
         force=False,
         quiet=False,
         ):
@@ -115,7 +115,7 @@ class Database:
         self.counts = os.path.realpath(
             os.path.join(workdir, "{}.counts.h5".format(self.name)))
         self.checkpoint = 0
-        self._seqgen = seqgen
+        self.mutator = mutator
         self._quiet = quiet
 
         # store params
@@ -322,7 +322,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_values, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1,self._seqgen)
+                args = (self.labels, slice0, slice1,self.mutator)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
