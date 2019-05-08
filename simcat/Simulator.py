@@ -214,15 +214,19 @@ class Simulator:
             elif self.mutator == 'toytree':
                 while nsnps < self.nsnps:
                     newtree = toytree.tree(next(next(sims).trees()).newick())
+                    with open('newick.tre','w') as f:
+                        f.write(newtree.write(tree_format=5))
+                        f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
                     seq = SeqGen(
-                        tree,
+                        newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
                         model="JC",
-                        seed=123,
+                        #seed=123,
                     )
                     geno=seq.mutate(1)
                     ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
-                    snparr[nsnps] = base_to_int(ordered)
-                    nsnps += 1
+                    if len(np.unique(ordered)) > 1:
+                        snparr[nsnps] = base_to_int(ordered)
+                        nsnps += 1
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
             quartidx = 0
