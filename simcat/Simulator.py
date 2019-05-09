@@ -19,6 +19,8 @@ from _msprime import LibraryError
 from subprocess import Popen, PIPE
 import os
 import pyvolve
+from copy import deepcopy
+from scipy import linalg
 
 from .jitted import count_matrix_int, mutate_jc, base_to_int
 
@@ -146,7 +148,67 @@ class Simulator:
         demog = sorted(list(demog), key=lambda x: x.time)
         return demog
 
+    def mutate_jc(self, ttree, seq_size,
+              return_tips = True,
+              q=np.array([
+                            [-1.,(1./3),(1./3),(1./3)],
+                            [(1./3),-1.,(1./3),(1./3)],
+                            [(1./3),(1./3),-1.,(1./3)],
+                            [(1./3),(1./3),(1./3),-1.],
+                        ]),
+              basearr = np.array([0,1,2,3])
+             ):
+        ## dictionary to hold the evolving sequences at each node
+        sim_dict = dict()
+        
+        ## for each node...
+        for curr_node in ttree.treenode.traverse():
+            ## if not the root...
+            if not curr_node.is_root():
+                ## take the sequence from the previous node
+                seq=sim_dict[curr_node.up.idx]
+                
+                ## copy that sequence into a "new sequence" object
+                newseq = deepcopy(seq)
+                
+                ## from q matrix and branch lenght, get the probability of observing each state (our P matrix)
+                probs = linalg.expm(np.multiply(q,float(curr_node.dist)))
+                
+                ## cheating here... basically ask "which of these bases change at all?"
+                ## for JC *specifically*, we can just pull the value in the top left corner of the matrix
+                ## and use it for all bases (ie, equal probability of A changing to something else as the prob
+                ## of G changing to something else)
+                changers = (1-np.random.binomial(1,probs[0][0],size=len(newseq))).astype(bool)
+                
+                ## pull out values that are changing
+                mask = newseq[changers]
+                
+                ## make an empty array to hold the values to which they are changing
+                newarr = np.zeros(mask.shape,dtype=np.int8)
+                
+                ## for each value that is changing to something else, randomly draw one of the 
+                ## other three bases. Again, this is JC SPECIFIC
+                for i in range(len(mask)):
+                    newarr[i] = np.random.choice(np.delete(basearr, mask[i]))
+                
+                ## plug the changed values back into the newseq object
+                newseq[changers]=newarr
+                ## save the new sequence to its assigned node
+                sim_dict[curr_node.idx] = newseq
+            
 
+            else:
+                # if the root, just generate a random sequence
+                sim_dict[curr_node.idx] = np.random.choice(4,size=seq_size)
+
+        if return_tips:
+    ##        tip_dict = dict()
+    ##        for leaf in range(len(ttree)):
+    ##            tip_dict[leaf] = sim_dict[leaf]
+            tip_dict = {k: sim_dict[k] for k in [leaf.idx for leaf in ttree.treenode.get_leaves()]}
+            return(tip_dict)
+        else:
+            return(sim_dict)
 
     def run(self):
         """
@@ -226,6 +288,29 @@ class Simulator:
                     ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
                     if len(np.unique(ordered)) > 1:
                         snparr[nsnps] = base_to_int(ordered)
+                        nsnps += 1
+
+            elif self.mutator == 'jc':
+                while nsnps < self.nsnps:
+                    newtree = toytree.tree(next(next(sims).trees()).newick())
+                    #with open('newick.tre','w') as f:
+                    #    f.write(newtree.write(tree_format=5))
+                    #    f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
+                    #seq = SeqGen(
+                    #    newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
+                    #    model="JC",
+                    #    #seed=123,
+                    #)
+
+
+
+                    geno=self.mutate_jc(
+                        newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
+                        1
+                        )
+                    ordered = [geno[i] for i in range(0,len(geno))]
+                    if len(np.unique(ordered)) > 1:
+                        snparr[nsnps] = ordered
                         nsnps += 1
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
