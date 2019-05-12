@@ -317,7 +317,7 @@ class Simulator:
                             nsnps += 1
 
                     # This can occur when pop size is v small, just skip to next.
-                    except LibraryError:
+                    except:
                         pass
 
 
