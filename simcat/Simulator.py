@@ -292,26 +292,32 @@ class Simulator:
 
             elif self.mutator == 'jc':
                 while nsnps < self.nsnps:
-                    newtree = toytree.tree(next(next(sims).trees()).newick())
-                    #with open('newick.tre','w') as f:
-                    #    f.write(newtree.write(tree_format=5))
-                    #    f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
-                    #seq = SeqGen(
-                    #    newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
-                    #    model="JC",
-                    #    #seed=123,
-                    #)
+                    try:
+                        newtree = toytree.tree(next(next(sims).trees()).newick())
+                        #with open('newick.tre','w') as f:
+                        #    f.write(newtree.write(tree_format=5))
+                        #    f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
+                        #seq = SeqGen(
+                        #    newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
+                        #    model="JC",
+                        #    #seed=123,
+                        #)
 
 
 
-                    geno=self.mutate_jc(
-                        newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
-                        1
-                        )
-                    ordered = [geno[i] for i in range(0,len(geno))]
-                    if len(np.unique(ordered)) > 1:
-                        snparr[nsnps] = ordered
-                        nsnps += 1
+                        geno=self.mutate_jc(
+                            newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
+                            1
+                            )
+                        ordered = [geno[i] for i in range(0,len(geno))]
+                        if len(np.unique(ordered)) > 1:
+                            snparr[nsnps] = ordered
+                            nsnps += 1
+                    # This can occur when pop size is v small, just skip to next.
+                    except LibraryError:
+                        pass
+
+
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
             quartidx = 0
