@@ -293,7 +293,9 @@ class Simulator:
             elif self.mutator == 'jc':
                 while nsnps < self.nsnps:
                     try:
-                        newtree = toytree.tree(next(next(sims).trees()).newick())
+                        nextone = next(sims).trees()
+                        newick = next(nextone).newick()
+                        newtree = toytree.tree(newick)
                         #with open('newick.tre','w') as f:
                         #    f.write(newtree.write(tree_format=5))
                         #    f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
@@ -313,6 +315,7 @@ class Simulator:
                         if len(np.unique(ordered)) > 1:
                             snparr[nsnps] = ordered
                             nsnps += 1
+
                     # This can occur when pop size is v small, just skip to next.
                     except LibraryError:
                         pass
