@@ -249,7 +249,8 @@ class Genes:
                 num_finished_genes = 0
                 while num_finished_genes < self.num_genes: 
                     new_treeseq = next(sims).trees()
-                    for gt in newtree:
+                    curr_bp = 0 # track what basepair we're on
+                    for gt in new_treeseq:
                         gt_start = gt.interval[0]
                         gt_end = gt.interval[1]
                         gt_len = int(round(gt_end)) - int(round(gt_start))
@@ -264,7 +265,7 @@ class Genes:
 
 
                         my_partition = pyvolve.Partition(models = my_model, size = gt_len)
-                        t = pyvolve.read_tree(tree = newtree,scale_tree = self.mut)
+                        t = pyvolve.read_tree(tree = gt,scale_tree = self.mut)
                         my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
                         my_evolver(seqfile=None)
                         geno=my_evolver.leaf_seqs
@@ -274,7 +275,8 @@ class Genes:
                         #    os.remove(filename)
                         #else:    ## Show an error ##
                         #    print("Error: %s file not found" % filename)
-                        snparr[num_finished_genes] = base_to_int_genes(np.array(ordered))
+                        snparr[num_finished_genes,:,curr_bp:(curr_bp+gt_len)] = base_to_int_genes(np.array(ordered))
+                        curr_bp += gt_len
                     num_finished_genes += 1
                 return(snparr)
 
