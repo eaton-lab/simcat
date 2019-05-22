@@ -263,9 +263,10 @@ class Genes:
                         #result=stdout.decode("utf-8").split('\n')[:-1]
                         #geno = dict([i.split(' ') for i in result[1:]])
 
+                        newick = gt.newick()
 
                         my_partition = pyvolve.Partition(models = my_model, size = gt_len)
-                        t = pyvolve.read_tree(tree = gt,scale_tree = self.mut)
+                        t = pyvolve.read_tree(tree = newick,scale_tree = self.mut)
                         my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
                         my_evolver(seqfile=None)
                         geno=my_evolver.leaf_seqs
