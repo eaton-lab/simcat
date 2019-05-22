@@ -247,6 +247,7 @@ class Genes:
             elif self.mutator == 'pyvolve':
                 my_model = pyvolve.Model('nucleotide')
                 num_finished_genes = 0
+                num_failures = 0
                 while num_finished_genes < self.num_genes: 
                 	try:
 	                    new_treeseq = next(sims).trees()
@@ -281,8 +282,10 @@ class Genes:
 	                        snparr[num_finished_genes,:,curr_bp:(curr_bp+gt_len)] = base_to_int_genes(np.array(ordered))
 	                        curr_bp += gt_len
 	                    num_finished_genes += 1
-	                except:
-	                	pass
+	                except LibraryError:
+	                	num_failures += 1
+	                	print("failed: "+ str(num_failures))
+		                pass
                 return(snparr)
 
             elif self.mutator == 'toytree':
