@@ -248,35 +248,35 @@ class Genes:
                 my_model = pyvolve.Model('nucleotide')
                 num_finished_genes = 0
                 while num_finished_genes < num_genes: 
-                	new_treeseq = next(sims).trees()
-	                for gt in newtree:
-	                    gt_start = gt.interval[0]
-	                    gt_end = gt.interval[1]
-	                    gt_len = int(round(gt_end)) - int(round(gt_start))
-	                    #print(newtree)
-	                    #filename = str(np.random.randint(1e10)) +'.newick'
-	                    #with open(filename,'w') as f:
-	                    #    f.write(str(newtree))
-	                    #process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
-	                    #stdout, stderr = process.communicate()
-	                    #result=stdout.decode("utf-8").split('\n')[:-1]
-	                    #geno = dict([i.split(' ') for i in result[1:]])
- 
+                    new_treeseq = next(sims).trees()
+                    for gt in newtree:
+                        gt_start = gt.interval[0]
+                        gt_end = gt.interval[1]
+                        gt_len = int(round(gt_end)) - int(round(gt_start))
+                        #print(newtree)
+                        #filename = str(np.random.randint(1e10)) +'.newick'
+                        #with open(filename,'w') as f:
+                        #    f.write(str(newtree))
+                        #process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
+                        #stdout, stderr = process.communicate()
+                        #result=stdout.decode("utf-8").split('\n')[:-1]
+                        #geno = dict([i.split(' ') for i in result[1:]])
 
-	                    my_partition = pyvolve.Partition(models = my_model, size = gt_len)
-	                    t = pyvolve.read_tree(tree = newtree,scale_tree = self.mut)
-	                    my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
-	                    my_evolver(seqfile=None)
-	                    geno=my_evolver.leaf_seqs
-	                    ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
-	                    s#nparr[nsnps] = base_to_int(ordered)
-	                    #if os.path.isfile(filename):
-	                    #    os.remove(filename)
-	                    #else:    ## Show an error ##
-	                    #    print("Error: %s file not found" % filename)
-	                    snparr[num_finished_genes] = base_to_int_genes(np.array(ordered))
-	                num_finished_genes += 1
-	            return(snparr)
+
+                        my_partition = pyvolve.Partition(models = my_model, size = gt_len)
+                        t = pyvolve.read_tree(tree = newtree,scale_tree = self.mut)
+                        my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
+                        my_evolver(seqfile=None)
+                        geno=my_evolver.leaf_seqs
+                        ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
+                        #snparr[nsnps] = base_to_int(ordered)
+                        #if os.path.isfile(filename):
+                        #    os.remove(filename)
+                        #else:    ## Show an error ##
+                        #    print("Error: %s file not found" % filename)
+                        snparr[num_finished_genes] = base_to_int_genes(np.array(ordered))
+                    num_finished_genes += 1
+                return(snparr)
 
             elif self.mutator == 'toytree':
                 while nsnps < self.nsnps:
