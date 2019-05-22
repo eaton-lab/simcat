@@ -69,7 +69,7 @@ class Genes:
                 (self.nvalues, self.ntips,self.alignment_length), dtype=np.int8) 
 
 
-	def _get_tree_sequence(self, idx):
+    def _get_tree_sequence(self, idx):
         """
         Performs simulations with params varied across input values.
         """       
