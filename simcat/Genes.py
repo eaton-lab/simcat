@@ -247,7 +247,7 @@ class Genes:
             elif self.mutator == 'pyvolve':
                 my_model = pyvolve.Model('nucleotide')
                 num_finished_genes = 0
-                while num_finished_genes < num_genes: 
+                while num_finished_genes < self.num_genes: 
                     new_treeseq = next(sims).trees()
                     for gt in newtree:
                         gt_start = gt.interval[0]
