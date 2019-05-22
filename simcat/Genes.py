@@ -15,7 +15,7 @@ import numpy as np
 import msprime as ms
 import itertools as itt
 from scipy.special import comb
-from _msprime import LibraryError
+from _tskit import LibraryError
 from subprocess import Popen, PIPE
 import os
 import pyvolve
@@ -289,51 +289,6 @@ class Genes:
 		                pass
                 return(snparr)
 
-            elif self.mutator == 'toytree':
-                while nsnps < self.nsnps:
-                    newtree = toytree.tree(next(next(sims).trees()).newick())
-                    with open('newick.tre','w') as f:
-                        f.write(newtree.write(tree_format=5))
-                        f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
-                    seq = SeqGen(
-                        newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
-                        model="JC",
-                        #seed=123,
-                    )
-                    geno=seq.mutate(1)
-                    ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
-                    if len(np.unique(ordered)) > 1:
-                        snparr[nsnps] = base_to_int(ordered)
-                        nsnps += 1
 
-            elif self.mutator == 'jc':
-                while nsnps < self.nsnps:
-                    try:
-                        nextone = next(sims).trees()
-                        newick = next(nextone).newick()
-                        newtree = toytree.tree(newick)
-                        #with open('newick.tre','w') as f:
-                        #    f.write(newtree.write(tree_format=5))
-                        #    f.write(newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut).write(tree_format=5))
-                        #seq = SeqGen(
-                        #    newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
-                        #    model="JC",
-                        #    #seed=123,
-                        #)
-
-
-
-                        geno=self.mutate_jc(
-                            newtree.mod.node_scale_root_height(newtree.treenode.height*self.mut),
-                            1
-                            )
-                        ordered = [geno[i] for i in range(0,len(geno))]
-                        if len(np.unique(ordered)) > 1:
-                            snparr[nsnps] = ordered
-                            nsnps += 1
-
-                    # This can occur when pop size is v small, just skip to next.
-                    except:
-                        pass
 
 
