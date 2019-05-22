@@ -39,7 +39,7 @@ class Genes:
 
 
         # parameter transformations
-        self.mut = 1e-7
+        self.mut = 1e-8
         self.theta = None
 
         self.mutator = mutator
