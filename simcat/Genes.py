@@ -76,6 +76,7 @@ class Genes:
         # Ne is calculated from fixed mut and sampled theta. Used in popconfig
         self._theta = self.thetas[idx]
         self._Ne = int((self._theta / self.mut) / 4.)
+        print(self._Ne)
         self._atimes = self.atimes[idx]
         self._aprops = self.aprops[idx]
         self._asources = self.asources[idx]
