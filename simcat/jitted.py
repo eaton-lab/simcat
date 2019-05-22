@@ -63,3 +63,18 @@ def base_to_int(geno_arr):
         if geno_arr[basenum] == 'T':
             basetrans[basenum] = 3
     return(basetrans)
+
+@njit
+def base_to_int_genes(geno_arr):
+    basetrans = np.zeros(geno_arr.shape,dtype=np.int8)
+    for seqnum in np.arange(geno_arr.shape[0]):
+        for basenum in np.arange(geno_arr.shape[1]):
+            if  geno_arr[seqnum,basenum] == 'A':
+                basetrans[seqnum,basenum] = 0
+            if geno_arr[seqnum,basenum] == 'G':
+                basetrans[seqnum,basenum] = 1
+            if geno_arr[seqnum,basenum] == 'C':
+                basetrans[seqnum,basenum] = 2
+            if geno_arr[seqnum,basenum] == 'T':
+                basetrans[seqnum,basenum] = 3
+    return(basetrans)
