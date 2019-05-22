@@ -276,6 +276,7 @@ class Genes:
 	                    #    print("Error: %s file not found" % filename)
 	                    snparr[num_finished_genes] = base_to_int_genes(np.array(ordered))
 	                num_finished_genes += 1
+	            return(snparr)
 
             elif self.mutator == 'toytree':
                 while nsnps < self.nsnps:
@@ -325,15 +326,3 @@ class Genes:
                         pass
 
 
-
-            # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
-            quartidx = 0
-            qiter = itt.combinations(range(self.ntips), 4)
-            for currquart in qiter:
-                # cols indices match tip labels b/c we named tips node.idx
-                quartsnps = snparr[:, currquart]
-                # save as stacked matrices
-                tmpcounts[quartidx] = count_matrix_int(quartsnps)
-                # save flattened to counts
-                self.counts[idx] = np.ravel(tmpcounts)
-                quartidx += 1
