@@ -461,7 +461,7 @@ def _draw_five_taxon_data(ttree, admixture_edges, counts, baseline=None, **kwarg
         if admixture_edges:
             for edge in admixture_edges:
                 src, dest = edge[0], edge[1]                
-                xsrc, xdest = coords[src][0], coords[dest][0]
+                xsrc, xdest = coords[src][1], coords[dest][1]
                 height = edges[(src, dest)][0]
                 arrow = toyplot.marker.create(
                     shape=">",
@@ -470,7 +470,7 @@ def _draw_five_taxon_data(ttree, admixture_edges, counts, baseline=None, **kwarg
                 )
                 axes.graph(
                     np.array([(0, 1)]),
-                    vcoordinates=[(xdest, height), (xsrc, height)],
+                    vcoordinates=[(xsrc, height), (xdest, height)],
                     tmarker=arrow,
                     estyle={
                         "stroke-width": 7, 
