@@ -337,7 +337,7 @@ class Simulator:
                         result=stdout.decode("utf-8").split('\n')[:-1]
                         geno = dict([i.split(' ') for i in result[1:]])
                         ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
-                        if len(ordered) > 1:
+                        if len(np.unique(ordered)) > 1:
                             snparr[nsnps] = base_to_int(ordered)
                             nsnps += 1
                             countem += 1
