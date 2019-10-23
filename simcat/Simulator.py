@@ -18,9 +18,10 @@ from scipy.special import comb
 from _msprime import LibraryError
 from subprocess import Popen, PIPE
 import os
-import pyvolve
 from copy import deepcopy
 from scipy import linalg
+from phymsim import Model
+from ast import literal_eval
 
 from .jitted import count_matrix_int, mutate_jc, base_to_int
 
@@ -40,8 +41,7 @@ class Simulator:
         self.slice1 = slice1
 
         # parameter transformations
-        self.mut = 1e-7
-        self.theta = None
+        self.mut = 1e-8
 
         self.mutator = mutator
 
@@ -49,17 +49,15 @@ class Simulator:
         with h5py.File(self.database, 'r') as io5:
 
             # sliced data arrays
-            self.thetas = io5["thetas"][slice0:slice1]
-            self.atimes = io5["admix_times"][slice0:slice1, ...]
-            self.asources = io5["admix_sources"][slice0:slice1, ...]
-            self.atargets = io5["admix_targets"][slice0:slice1, ...]
-            self.aprops = io5["admix_props"][slice0:slice1, ...]
+            self.node_heights = io5["node_heights"][slice0:slice1, ...]
+            self.node_Nes = io5["node_Nes"][slice0:slice1, ...]
+            self.admixture_args = io5["admixture_args"][slice0:slice1, ...]
 
             # attribute metadata
             self.tree = toytree.tree(io5.attrs["tree"])
             self.nsnps = io5.attrs["nsnps"]
             self.ntips = len(self.tree)
-            self.aedges = self.asources.shape[1]
+            #self.aedges = self.asources.shape[1]
 
             # storage for output
             self.nquarts = int(comb(N=self.ntips, k=4))  # scipy.special.comb
@@ -179,38 +177,63 @@ class Simulator:
                 ## and use it for all bases (ie, equal probability of A changing to something else as the prob
                 ## of G changing to something else)
                 changers = (1-np.random.binomial(1,probs[0][0],size=len(newseq))).astype(bool)
-                
+
                 ## pull out values that are changing
                 mask = newseq[changers]
-                
+
                 ## make an empty array to hold the values to which they are changing
                 newarr = np.zeros(mask.shape,dtype=np.int8)
-                
+
                 ## for each value that is changing to something else, randomly draw one of the 
                 ## other three bases. Again, this is JC SPECIFIC
                 for i in range(len(mask)):
                     newarr[i] = np.random.choice(np.delete(basearr, mask[i]))
-                
+
                 ## plug the changed values back into the newseq object
                 newseq[changers]=newarr
                 ## save the new sequence to its assigned node
                 sim_dict[curr_node.idx] = newseq
-            
+
 
             else:
                 # if the root, just generate a random sequence
                 sim_dict[curr_node.idx] = np.random.choice(4,size=seq_size)
 
         if return_tips:
-    ##        tip_dict = dict()
-    ##        for leaf in range(len(ttree)):
-    ##            tip_dict[leaf] = sim_dict[leaf]
+    #        tip_dict = dict()
+    #        for leaf in range(len(ttree)):
+    #            tip_dict[leaf] = sim_dict[leaf]
             tip_dict = {k: sim_dict[k] for k in [leaf.idx for leaf in ttree.treenode.get_leaves()]}
             return(tip_dict)
         else:
             return(sim_dict)
 
+    def _return_Model(self, idx):
+        # get tree
+        tree = self.tree
+        # assign times to nodes
+
+        # assign Nes to nodes
+        for node in tree.treenode.traverse():
+            node.add_feature('Ne', self.node_Nes[idx, node.idx])
+
+        mut = self.mut
+        # interpret argument:
+        ad_arg = literal_eval(self.admixture_args[idx].decode())
+        # define model
+        return(Model(tree,
+                     Ne=None,
+                     mut=1e-8,
+                     recomb=0,
+                     admixture_edges=ad_arg))
+
+
     def run(self):
+        for idx in range(self.nvalues):
+            sim = self._return_Model(idx)
+            self.counts[idx] = sim._run_snps(self.nsnps)
+
+    def run_old(self):
         """
         run and parse results for nsamples simulations.
         """
@@ -246,32 +269,6 @@ class Simulator:
                     # This can occur when pop size is v small, just skip to next.
                     except LibraryError:
                         pass
-
-            elif self.mutator == 'pyvolve':
-                my_model = pyvolve.Model('nucleotide')
-                my_partition = pyvolve.Partition(models = my_model, size = 1)
-                while nsnps < self.nsnps:
-                    newtree = next(next(sims).trees()).newick()
-                    #print(newtree)
-                    #filename = str(np.random.randint(1e10)) +'.newick'
-                    #with open(filename,'w') as f:
-                    #    f.write(str(newtree))
-                    #process = Popen(['seq-gen', '-m','GTR','-l','1','-s',str(self.mut),filename,'-or','-q'], stdout=PIPE, stderr=PIPE)
-                    #stdout, stderr = process.communicate()
-                    #result=stdout.decode("utf-8").split('\n')[:-1]
-                    #geno = dict([i.split(' ') for i in result[1:]])
-
-                    t = pyvolve.read_tree(tree = newtree,scale_tree = self.mut)
-                    my_evolver = pyvolve.Evolver(partitions = my_partition, tree = t)
-                    my_evolver(seqfile=None)
-                    geno=my_evolver.leaf_seqs
-                    ordered = [geno[np.str(i)] for i in range(1,len(geno)+1)]
-                    snparr[nsnps] = base_to_int(ordered)
-                    #if os.path.isfile(filename):
-                    #    os.remove(filename)
-                    #else:    ## Show an error ##
-                    #    print("Error: %s file not found" % filename)
-                    nsnps += 1
 
             elif self.mutator == 'toytree':
                 while nsnps < self.nsnps:
@@ -343,14 +340,12 @@ class Simulator:
                             countem += 1
                         if os.path.isfile(filename):
                             os.remove(filename)
-                        else:    ## Show an error ##
+                        else:  # Show an error
                             print("Error: %s file not found" % filename)
                     except:
                         print(countem)
                         countem += 1
                         pass
-
-
 
             # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
             quartidx = 0
@@ -361,5 +356,5 @@ class Simulator:
                 # save as stacked matrices
                 tmpcounts[quartidx] = count_matrix_int(quartsnps)
                 # save flattened to counts
-                self.counts[idx] = np.ravel(tmpcounts)
                 quartidx += 1
+            self.counts[idx] = np.ravel(tmpcounts)
