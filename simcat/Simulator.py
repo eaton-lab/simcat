@@ -31,9 +31,7 @@ class Simulator:
         self.slice1 = slice1
 
         # parameter transformations
-        self.mut = 1e-8
-
-        self.mutator = mutator
+        self.mut = 1e-7
 
         # open view to the data
         with h5py.File(self.database, 'r') as io5:
@@ -63,6 +61,15 @@ class Simulator:
         # get tree
         tree = self.tree
         # assign times to nodes
+        nheights = self.node_heights[idx].astype(int)  # pull out node heights
+        for _node in tree.treenode.traverse():
+            chil = _node.children  # get the two descendant nodes (if internal)
+            if chil:  # if internal...
+                # get the distances of children nodes to current node
+                new_dists = nheights[_node.idx]-np.array([nheights[i.idx] for i in chil])
+                # set the dist values of children nodes
+                for i in range(len(chil)):
+                    chil[i].dist = new_dists[i]
 
         # assign Nes to nodes
         for node in tree.treenode.traverse():

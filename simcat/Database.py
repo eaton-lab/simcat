@@ -99,7 +99,7 @@ class Database:
         admix_edge_min=0.5,
         admix_edge_max=0.5,
         exclude_sisters=False,
-        mutator='msprime',
+        node_slider=True,
         force=False,
         quiet=False,
         ):
@@ -115,8 +115,8 @@ class Database:
         self.counts = os.path.realpath(
             os.path.join(workdir, "{}.counts.h5".format(self.name)))
         self.checkpoint = 0
-        self.mutator = mutator
         self._quiet = quiet
+        self.node_slider = node_slider
 
         # store params
         self.Ne = Ne
@@ -154,14 +154,14 @@ class Database:
         # decide on an appropriate chunksize to keep memory load reasonable
         self.chunksize = 100
 
-        # store ipcluster information 
+        # store ipcluster information
         self.ipcluster = {
-            "cluster_id": "", 
+            "cluster_id": "",
             "profile": "default",
-            "engines": "Local", 
-            "quiet": 0, 
-            "timeout": 60, 
-            "cores": 0, 
+            "engines": "Local",
+            "quiet": 0,
+            "timeout": 60,
+            "cores": 0,
             "threads": 2,
             "pids": {},
         }
@@ -243,13 +243,16 @@ class Database:
         # We can probably do it here on this list of trees
         idx = 0
         # for now just a constant Ne...
-        Nes= np.repeat(self.Ne, itree.nnodes)
+        Nes = np.repeat(self.Ne, itree.nnodes)
         for node in itree.treenode.traverse():
             node.add_feature('Ne', Nes[idx])
-            idx+=1
+            idx += 1
+        if not self.node_slider:
+            all_trees = np.repeat(itree,
+                                  self.ntests)
 
-        all_trees = np.repeat(itree,
-                              self.ntests)
+        else:
+            all_trees = np.array([itree.mod.node_slider() for i in range(self.ntests)])
 
         eidx = 0
         for unique_tree in all_trees:  # note that this could also be a tree generator...
@@ -304,7 +307,7 @@ class Database:
         ncores = len(ipyclient)
         self.chunksize = int(np.ceil(self.nstored_values / (ncores * 4)))
         self.chunksize = min(500, self.chunksize)
-        self.chunksize = max(4, self.chunksize)        
+        self.chunksize = max(4, self.chunksize)
 
         # an iterator to return chunked slices of jobs
         jobs = range(self.checkpoint, self.nstored_values, self.chunksize)
@@ -315,7 +318,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_values, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1,self.mutator)
+                args = (self.labels, slice0, slice1)
                 rasyncs[slice0] = lbview.apply(Simulator, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
