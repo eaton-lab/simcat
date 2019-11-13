@@ -17,10 +17,9 @@ import numpy as np
 import itertools as itt
 from scipy.special import comb
 
-from .Model import Model
 from .Simulator import Simulator
 from .parallel import Parallel
-from .utils import get_all_admix_edges, SimcatError, Progress, tile_reps
+from .utils import get_all_admix_edges, SimcatError, Progress
 
 
 ############################################################################

@@ -10,7 +10,6 @@ from builtins import range
 
 import h5py
 import toytree
-from toytree.SeqGen import SeqGen
 import numpy as np
 import msprime as ms
 import itertools as itt
