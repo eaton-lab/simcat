@@ -12,16 +12,12 @@ import h5py
 import toytree
 import numpy as np
 import msprime as ms
-import itertools as itt
-from scipy.special import comb
 from _tskit import LibraryError
-from subprocess import Popen, PIPE
-import os
 import pyvolve
 from copy import deepcopy
 from scipy import linalg
 
-from .jitted import count_matrix_int, mutate_jc, base_to_int_genes
+from .jitted import mutate_jc, base_to_int_genes
 
 
 #############################################################################
