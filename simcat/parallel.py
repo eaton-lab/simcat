@@ -63,7 +63,7 @@ class Parallel(object):
         s2 = "</span>"
         self.message.value = s1 + inner + s2
 
-    
+
     def start_ipcluster(self):
         """
         The name is a unique id that keeps this __init__ of ipyrad distinct
@@ -87,7 +87,7 @@ class Parallel(object):
             "--n={}".format(self.tool.ipcluster["cores"]),
             "{}".format(iparg),
         ]
-                   
+
         # wrap ipcluster start
         try:
             subprocess.check_call(

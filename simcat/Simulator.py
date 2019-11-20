@@ -117,8 +117,8 @@ class IPCoalWrapper:
 
             # get admixture tuples (only supports 1 egge like this right now)
             admix = (
-                self.admixture[idx, 0],
-                self.admixture[idx, 1],
+                int(self.admixture[idx, 0]),
+                int(self.admixture[idx, 1]),
                 0.5,
                 self.admixture[idx, 2],
             )
