@@ -179,6 +179,9 @@ class Database:
             "pids": {},
         }
 
+        # fill the database
+        self.fill_labels_database()
+
 
 
     def database_status(self):
@@ -216,7 +219,7 @@ class Database:
         # check that all nodes have .Ne
         nes = self.tree.get_node_values("Ne", True, True)
         if not all(nes):
-            raise ipcoalError(
+            raise SimcatError(
                 "Ne must be provided as an argument or tree node attribute.")
 
         # set to the max value        
@@ -299,7 +302,7 @@ class Database:
         Fill the h5 database with all labels.
         """
         # arrays to write in chunks to the h5 array
-        chunksize = 10
+        chunksize = 10000
         arr_h = np.zeros((chunksize, self.inodes), dtype=np.int)
         arr_n = np.zeros((chunksize, self.inodes), dtype=np.int)
         arr_a = np.zeros((chunksize, 3), dtype=np.float)
@@ -353,10 +356,10 @@ class Database:
                     # reset arrs if bigger than chunksize
                     if (idx == chunksize) or (idx == self.nstored_labels):
                         with h5py.File(self.labels, 'a') as i5:
-                            i5["node_heights"][wdx:wdx + idx] = arr_h
-                            i5["node_Nes"][wdx:wdx + idx] = arr_n
-                            i5["admixture"][wdx:wdx + idx] = arr_a
-                            i5["slide_seeds"][wdx:wdx + idx] = arr_s
+                            i5["node_heights"][wdx:wdx + idx] = arr_h[:idx]
+                            i5["node_Nes"][wdx:wdx + idx] = arr_n[:idx]
+                            i5["admixture"][wdx:wdx + idx] = arr_a[:idx]
+                            i5["slide_seeds"][wdx:wdx + idx] = arr_s[:idx]
                             arr_h[:] = 0
                             arr_n[:] = 0
                             arr_a[:] = 0
