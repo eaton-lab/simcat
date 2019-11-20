@@ -1,19 +1,21 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 
 from setuptools import setup, find_packages
 import re
 
-## parse version from init.py
+# parse version from init.py
 with open("simcat/__init__.py") as init:
-    CUR_VERSION = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                    init.read(),
-                    re.M).group(1)
+    CUR_VERSION = re.search(
+        r"^__version__ = ['\"]([^'\"]*)['\"]",
+        init.read(),
+        re.M,
+    ).group(1)
 
-## run setup script
+# run setup script
 setup(
     name="simcat",
     version=CUR_VERSION,
-    url="https://github.com/pmckenz1/intro-ml",
+    url="https://github.com/pmckenz1/simcat",
     author="Patrick McKenzie and Deren Eaton",
     author_email="de2356@columbia.edu",
     description="simulation and machine learning algorithms for admixture inference",
@@ -21,15 +23,16 @@ setup(
     packages=find_packages(),
     install_requires=[
         "future",
-        "numba",
-        "numpy",
-        "scipy",
+        "ipcoal",
         "h5py",
         "ipyparallel",
-        "toytree",
-        "msprime",
-        "ipywidgets",
-        "ipython",
+        # "numba",
+        # "numpy",
+        # "scipy",
+        # "toytree",
+        # "msprime",
+        # "ipywidgets",
+        # "ipython",
     ],
     keywords="invariants coalescent simulation genomics introgression",
     entry_points={},
@@ -39,11 +42,6 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',                
         'Framework :: Jupyter'        
     ],
 )
