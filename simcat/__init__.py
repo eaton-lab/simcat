@@ -1,14 +1,16 @@
 #!/usr/bin/env
 
 # imports
-from .Model import Model
-from .Database import Database
-from . import utils
-from . import plot
-from .ml import Analysis
-from .Streamer import Streamer
-from .Genes import Genes
+
+from .Database import Database    # BUILDS THE DATABASE OF LABELS
+
+# from .Streamer import Streamer  # PULLS FROM DB TO RUN SIMS ON ENGINES
+# from .Model import Model        # DEPRECATED TO SIMCOAL
+# from .Genes import Genes        # DEPRECATED TO SIMCOAL
+# from . import utils             #
+# from . import plot              #
+# from .ml import Analysis        # POST-SIM ANALYSIS
 
 # dunders
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 __authors__ = "Patrick McKenzie and Deren Eaton"
