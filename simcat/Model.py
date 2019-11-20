@@ -380,7 +380,7 @@ class Model:
         # iterate over ntests (different sampled simulation parameters)
         gidx = 0
         for ridx in range(self.ntests):
-            
+
             # get tree_sequence generator for this set of params
             sims = self._get_tree_sequence(ridx)
 
