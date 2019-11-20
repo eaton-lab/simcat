@@ -9,83 +9,132 @@ from __future__ import print_function
 from builtins import range
 
 import h5py
+import itertools
+
+import ipcoal
 import toytree
 import numpy as np
-from scipy.special import comb
-from phymsim import Model
-from ast import literal_eval
 
 
-#############################################################################
-class Simulator:
+
+class IPCoalWrapper:
     """
     This is the object that runs on the engines by loading data from the HDF5,
     building the msprime simulations calls, and then calling .run() to fill
     count matrices and return them.
     """
-    def __init__(self, database_file, slice0, slice1, mutator='msprime', run=True):
+    def __init__(self, database_file, slice0, slice1, run=True):
 
         # location of data
         self.database = database_file
         self.slice0 = slice0
         self.slice1 = slice1
 
-        # parameter transformations
-        self.mut = 1e-7
+        # load the slice of data from .labels
+        self.load_slice()
 
+        # fill the vector of simulated data for .counts
+        self.vector = None
+        if run:
+            # infer count matrices on slice of data    
+            self.run()
+
+            # normalize counts while in stacked format?
+            pass
+
+            # get more features from the counts and flatten to .vector
+            self.add_features()
+
+
+
+    def add_features(self):
+        """
+        compute additional features that capture the stacked matrix structure
+        of the count data before flattening it into a vector for ML.
+        """
+        # compute SVD features for each stack
+        # (10, 15, 16, 16) -> (10, 15, 16, 16), (10, 15, 16), (10, 15, 16, 16)
+        u, s, vh = np.linalg.svd(self.counts)
+
+        # compute variance (10, 15, 16, 16) -> (10, 16, 16)
+        mvar = self.counts.var(axis=1)
+
+        # reshape to ntests flattened (10, 15, 16, 16) -> (10, 3840)
+        vectorsnps = self.counts.reshape(self.counts.shape[0], -1)
+
+        # return with stored vector results (10, ...)
+        self.vector = np.concatenate([
+            vectorsnps,                              # snp counts 
+            u.reshape(u.shape[0], -1),               # left singulars
+            s.reshape(s.shape[0], -1),               # singulars 
+            vh.reshape(vh.shape[0], -1),             # right singulars
+            mvar.reshape(mvar.shape[0], -1),         # variances
+        ], axis=1)
+
+
+
+    def load_slice(self):
+        """
+        Pull data from .labels for use in ipcoal sims
+        """
         # open view to the data
         with h5py.File(self.database, 'r') as io5:
 
             # sliced data arrays
-            self.node_heights = io5["node_heights"][slice0:slice1, ...]
-            self.node_Nes = io5["node_Nes"][slice0:slice1, ...]
-            self.admixture_args = io5["admixture_args"][slice0:slice1, ...]
+            self.node_Nes = io5["node_Nes"][self.slice0:self.slice1, ...]
+            self.admixture = io5["admixture"][self.slice0:self.slice1, ...]
+            self.slide_seeds = io5["slide_seeds"][self.slice0:self.slice1]
 
             # attribute metadata
             self.tree = toytree.tree(io5.attrs["tree"])
             self.nsnps = io5.attrs["nsnps"]
             self.ntips = len(self.tree)
-            #self.aedges = self.asources.shape[1]
 
-            # storage for output
-            self.nquarts = int(comb(N=self.ntips, k=4))  # scipy.special.comb
+            # storage SNPs in STACKED matrix so we can compute stacked stats
+            self.nquarts = sum(
+                1 for i in itertools.combinations(range(self.ntips), 4))
             self.nvalues = self.slice1 - self.slice0
             self.counts = np.zeros(
-                (self.nvalues, self.nquarts*16*16), dtype=np.int64) 
+                (self.nvalues, self.nquarts, 16, 16), dtype=np.int64) 
 
-        # calls run and returns filled counts matrix
-        if run:
-            self.run()
 
-    def _return_Model(self, idx):
-        # get tree
-        tree = self.tree
-        # assign times to nodes
-        nheights = self.node_heights[idx].astype(int)  # pull out node heights
-        for _node in tree.treenode.traverse():
-            chil = _node.children  # get the two descendant nodes (if internal)
-            if chil:  # if internal...
-                # get the distances of children nodes to current node
-                new_dists = nheights[_node.idx]-np.array([nheights[i.idx] for i in chil])
-                # set the dist values of children nodes
-                for i in range(len(chil)):
-                    chil[i].dist = new_dists[i]
-
-        # assign Nes to nodes
-        for node in tree.treenode.traverse():
-            node.add_feature('Ne', self.node_Nes[idx, node.idx])
-
-        mut = self.mut
-        # interpret argument:
-        ad_arg = literal_eval(self.admixture_args[idx].decode())
-        # define model
-        return(Model(tree,
-                     Ne=None,
-                     mut=mut,
-                     recomb=0,
-                     admixture_edges=ad_arg))
 
     def run(self):
+        """
+        iterate through ipcoal simulations across label values.
+        """
+        # run simulations
         for idx in range(self.nvalues):
-            sim = self._return_Model(idx)
-            self.counts[idx] = sim._run_snps(self.nsnps)
+
+            # modify the tree if ...
+            tree = self.tree.mod.node_slider(
+                prop=0.25, seed=self.slide_seeds[idx])
+
+            # set Nes on tree from root to tips ending before tips
+            nes = self.node_Nes[idx]
+            for node, ne in zip(tree.treenode.traverse(), nes):
+                node.Ne = int(1e6)  # ne
+
+            # get admixture tuples (only supports 1 egge like this right now)
+            admix = (
+                self.admixture[idx, 0],
+                self.admixture[idx, 1],
+                0.5,
+                self.admixture[idx, 2],
+            )
+
+            # build ipcoal Model object
+            model = ipcoal.Model(
+                tree=tree,
+                admixture_edges=[admix],
+                Ne=1e6,
+                )
+
+            # simulate genealogies and snps
+            model.sim_snps(self.nsnps)
+
+            # TODO: ipcoal converter not fastest possible
+            mat = ipcoal.utils.get_snps_count_matrix(tree, model.seqs)
+
+            # store results
+            self.counts[idx] = mat
