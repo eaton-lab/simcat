@@ -253,43 +253,30 @@ class Database:
         i5.attrs["nsnps"] = self.nsnps
         o5.attrs["nsnps"] = self.nsnps
 
-        # number of quartets depends on size of tree
-        # store count matrices (the data)
-        snps = (self.nquarts * 16 * 16)
-        svdu = (self.nquarts * 16 * 16)
-        svdv = (self.nquarts * 16 * 16)
-        svds = (self.nquarts * 16)
-        mvar = (16 * 16)
-        countsize = (self.nstored_labels, snps + svdu + svdv + svds + mvar)
-        o5.create_dataset(
-            "counts",
-            shape=countsize, 
-            dtype=np.float64)
+        # store data in separate dsets and with matrix shape so that in the 
+        # analysis we can best take advantage of different combinations of the
+        # data and its structure.
+        smat = (self.nstored_labels, self.nquarts, 16, 16)
+        svdu = (self.nstored_labels, self.nquarts, 16, 16)
+        svdv = (self.nstored_labels, self.nquarts, 16, 16)
+        svds = (self.nstored_labels, self.nquarts, 16)
+        mvar = (self.nstored_labels, 16, 16)
+        # countsize = (self.nstored_labels, snps + svdu + svdv + svds + mvar)
+        o5.create_dataset(name="counts", shape=smat, dtype=np.int64)
+        o5.create_dataset(name="svdu", shape=svdu, dtype=np.float64)
+        o5.create_dataset(name="svdv", shape=svdv, dtype=np.float64)
+        o5.create_dataset(name="svds", shape=svds, dtype=np.float64)
+        o5.create_dataset(name="mvar", shape=mvar, dtype=np.float64)        
 
-        # array of node heights in traverse order (-tips)
-        i5.create_dataset(
-            "node_heights",
-            shape=(self.nstored_labels, self.inodes),
-            dtype=np.int64)
-
-        # array of node Nes in traverse order (-tips)
-        i5.create_dataset(
-            "node_Nes",
-            shape=(self.nstored_labels, self.inodes),
-            dtype=np.int64)
-
-        # array for slide seeds to reconstruct heights quickly
-        i5.create_dataset(
-            "slide_seeds",
-            shape=(self.nstored_labels,),
-            dtype=np.int)
+        # array of node heights,Nes in traverse order (-tips)
+        lnodes = (self.nstored_labels, self.inodes)
+        i5.create_dataset(name="node_heights", shape=lnodes, dtype=np.int64)
+        i5.create_dataset(name="node_Nes", shape=lnodes, dtype=np.int64)
+        i5.create_dataset(name="slide_seeds", shape=(lnodes[0],), dtype=np.int)
 
         # array of admixture triplets (source, dest, prop) time is always p0.5
-        i5.create_dataset(
-            "admixture",
-            shape=(self.nstored_labels, 3 * self.nedges),
-            dtype=np.float64)
-            # dtype=h5py.string_dtype(encoding='ascii'))
+        ashape = (self.nstored_labels, 3 * self.nedges)
+        i5.create_dataset(name="admixture", shape=ashape, dtype=np.float64)
 
         # close the files
         i5.close()
@@ -380,7 +367,7 @@ class Database:
 
         # set chunksize based on ncores and stored_labels
         ncores = len(ipyclient)
-        self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 4)))
+        self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
         self.chunksize = min(500, self.chunksize)
         self.chunksize = max(4, self.chunksize)
 
@@ -416,8 +403,14 @@ class Database:
                         # store result
                         done += 1
                         progress.increment_all()
-                        result = rasync.get().vector                       
-                        io5["counts"][job:job + self.chunksize, :] = result
+
+                        # object returns, pull out results
+                        res = rasync.get()
+                        io5["counts"][job:job + self.chunksize, :] = res.counts
+                        io5["svdu"][job:job + self.chunksize, :] = res.svdu
+                        io5["svds"][job:job + self.chunksize, :] = res.svds
+                        io5["svdv"][job:job + self.chunksize, :] = res.svdv
+                        io5["mvar"][job:job + self.chunksize, :] = res.mvar
 
                         # free up memory from job
                         del rasyncs[job]
@@ -436,6 +429,10 @@ class Database:
 
             # on success: close the progress counter
             progress.widget.close()
+            print(
+                "completed {} simulations in {}."
+                .format(njobs, progress.elapsed)
+            )
 
         finally:
             # close the hdf5 handle
