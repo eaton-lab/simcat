@@ -220,28 +220,27 @@ class Progress(object):
                 "height": "{}px".format(sum(heights) + 5),
                 "margin": "5px 0px 5px 0px",
             })
-        
+
     @property
     def printstr(self):
-        elapsed = datetime.timedelta(seconds=int(time.time() - self.start))
+        self.elapsed = datetime.timedelta(seconds=int(time.time() - self.start))
         s1 = "<span style='font-size:14px; font-family:monospace'>"
         s2 = "</span>"
         inner = "{} | {:>3}% | {}".format(
             self.message, 
             int(100 * (self.bar.value / self.njobs)),
-            elapsed,
+            self.elapsed,
         )
-
         return s1 + inner + s2
 
     def display(self):
         display(self.widget)
-    
+
     def increment_all(self, value=1):
         self.bar.value += value
         if self.bar.value == self.njobs:
             self.bar.bar_style = "success"
         self.increment_time()
-            
+
     def increment_time(self):
         self.label.value = self.printstr
