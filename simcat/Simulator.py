@@ -34,7 +34,6 @@ class IPCoalWrapper:
         self.load_slice()
 
         # fill the vector of simulated data for .counts
-        self.vector = None
         if run:
             # infer count matrices on slice of data    
             self.run()
@@ -54,22 +53,25 @@ class IPCoalWrapper:
         """
         # compute SVD features for each stack
         # (10, 15, 16, 16) -> (10, 15, 16, 16), (10, 15, 16), (10, 15, 16, 16)
-        u, s, vh = np.linalg.svd(self.counts)
+        u, s, v = np.linalg.svd(self.counts)
+        self.svdu = u
+        self.svds = s
+        self.svdv = v
 
         # compute variance (10, 15, 16, 16) -> (10, 16, 16)
-        mvar = self.counts.var(axis=1)
+        self.mvar = self.counts.var(axis=1)
 
         # reshape to ntests flattened (10, 15, 16, 16) -> (10, 3840)
-        vectorsnps = self.counts.reshape(self.counts.shape[0], -1)
+        # vectorsnps = self.counts.reshape(self.counts.shape[0], -1)
 
         # return with stored vector results (10, ...)
-        self.vector = np.concatenate([
-            vectorsnps,                              # snp counts 
-            u.reshape(u.shape[0], -1),               # left singulars
-            s.reshape(s.shape[0], -1),               # singulars 
-            vh.reshape(vh.shape[0], -1),             # right singulars
-            mvar.reshape(mvar.shape[0], -1),         # variances
-        ], axis=1)
+        # self.vector = np.concatenate([
+        #     vectorsnps,                              # snp counts 
+        #     u.reshape(u.shape[0], -1),               # left singulars
+        #     s.reshape(s.shape[0], -1),               # singulars 
+        #     vh.reshape(vh.shape[0], -1),             # right singulars
+        #     mvar.reshape(mvar.shape[0], -1),         # variances
+        # ], axis=1)
 
 
 
@@ -110,10 +112,12 @@ class IPCoalWrapper:
             tree = self.tree.mod.node_slider(
                 prop=0.25, seed=self.slide_seeds[idx])
 
-            # set Nes on tree from root to tips ending before tips
-            nes = self.node_Nes[idx]
-            for node, ne in zip(tree.treenode.traverse(), nes):
-                node.Ne = int(1e6)  # ne
+            # set Nes default and override on internal nodes with stored vals
+            tree = tree.set_node_values("Ne", default=1e5)
+            nes = iter(self.node_Nes[idx])
+            for node in tree.treenode.traverse():
+                if not node.is_leaf():
+                    node.Ne = next(nes)
 
             # get admixture tuples (only supports 1 egge like this right now)
             admix = (
@@ -127,7 +131,7 @@ class IPCoalWrapper:
             model = ipcoal.Model(
                 tree=tree,
                 admixture_edges=[admix],
-                Ne=1e6,
+                Ne=None,
                 )
 
             # simulate genealogies and snps
