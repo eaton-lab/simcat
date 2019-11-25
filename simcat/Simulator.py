@@ -14,6 +14,7 @@ import itertools
 import ipcoal
 import toytree
 import numpy as np
+from .utils import get_snps_count_matrix
 
 
 
@@ -138,7 +139,7 @@ class IPCoalWrapper:
             model.sim_snps(self.nsnps)
 
             # TODO: ipcoal converter not fastest possible
-            mat = ipcoal.utils.get_snps_count_matrix(tree, model.seqs)
+            mat = get_snps_count_matrix(tree, model.seqs)
 
             # store results
             self.counts[idx] = mat
