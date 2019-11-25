@@ -264,7 +264,7 @@ class Database:
         svds = (self.nstored_labels, self.nquarts, 16)
         mvar = (self.nstored_labels, 16, 16)
         # countsize = (self.nstored_labels, snps + svdu + svdv + svds + mvar)
-        o5.create_dataset(name="counts", shape=smat, dtype=np.int64, gzip=True)
+        o5.create_dataset(name="counts", shape=smat, dtype=np.int64, compression="gzip")
         o5.create_dataset(name="svdu", shape=svdu, dtype=np.float64)
         o5.create_dataset(name="svdv", shape=svdv, dtype=np.float64)
         o5.create_dataset(name="svds", shape=svds, dtype=np.float64)
