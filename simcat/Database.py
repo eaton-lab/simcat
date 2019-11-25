@@ -97,6 +97,7 @@ class Database:
         seed=None,
         force=False,
         quiet=False,
+        random_sampling=True,
         ):
 
         # init random seed generator
@@ -116,6 +117,7 @@ class Database:
             os.path.join(workdir, "{}.counts.h5".format(self.name)))
         self.checkpoint = 0
         self._quiet = quiet
+        self._random_sampling = random_sampling
         self.node_slider = node_slider
 
         # store params
@@ -266,7 +268,7 @@ class Database:
         o5.create_dataset(name="svdu", shape=svdu, dtype=np.float64)
         o5.create_dataset(name="svdv", shape=svdv, dtype=np.float64)
         o5.create_dataset(name="svds", shape=svds, dtype=np.float64)
-        o5.create_dataset(name="mvar", shape=mvar, dtype=np.float64)        
+        o5.create_dataset(name="mvar", shape=mvar, dtype=np.float64)
 
         # array of node heights,Nes in traverse order (-tips)
         lnodes = (self.nstored_labels, self.inodes)
@@ -288,6 +290,14 @@ class Database:
         """
         Fill the h5 database with all labels.
         """
+        # sample admixture props randomly or uniformly?
+        if not self._random_sampling:
+            migsamps = np.linspace(
+                self.admix_prop_min, self.admix_prop_max, self.ntests)
+        else:
+            migsamps = self.random.uniform(
+                self.admix_prop_min, self.admix_prop_max, self.ntests)
+
         # arrays to write in chunks to the h5 array
         chunksize = 10000
         arr_h = np.zeros((chunksize, self.inodes), dtype=np.int)
@@ -324,8 +334,7 @@ class Database:
                 aedges = np.array(list(aedges))[aes]
 
             # sample admix proportion
-            migprop = self.random.uniform(
-                self.admix_prop_min, self.admix_prop_max, 1)
+            migprop = migsamps[test]
 
             # iterate over each placement of the edges
             for edgetup in aedges:
