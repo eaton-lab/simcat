@@ -343,7 +343,7 @@ class Database:
                 for rep in range(self.nreps):
                     arr_h[idx] = heights
                     arr_n[idx] = popsize
-                    arr_a[idx] = np.concatenate([edgetup, migprop])
+                    arr_a[idx] = (edgetup[0], edgetup[1], migprop)
                     arr_s[idx] = slide_seed
 
                     # advance counter
