@@ -113,6 +113,7 @@ class Analysis(object):
             self.counts = io5["counts"][:]
 
             # [1] rescale to make counts proportional across ALL sims.
+            # this seems to work much better than [2].
             if self.scale == 1:
                 self.counts = self.counts / self.counts.max()
                 self.X = np.array([i.flatten() for i in self.counts])
@@ -216,7 +217,7 @@ class Analysis(object):
 
 
     def train_test_split(self, prop=0.33):
-        "Use sckkit to split dataset"
+        "Use scikit to split dataset"
 
         # split data and labels
         a, b, c, d = train_test_split(
