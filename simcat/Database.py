@@ -255,6 +255,8 @@ class Database:
         o5.attrs["tree"] = self.tree.write()
         i5.attrs["nsnps"] = self.nsnps
         o5.attrs["nsnps"] = self.nsnps
+        i5.attrs["nquarts"] = self.nquarts
+        o5.attrs["nquarts"] = self.nquarts
 
         # store data in separate dsets and with matrix shape so that in the 
         # analysis we can best take advantage of different combinations of the
@@ -372,14 +374,15 @@ class Database:
         # if outfile exists and not force then find checkpoint
         # ...
 
-        # load-balancer for single-threaded execution jobs
+        # load-balancer for distributed parallel jobs
         lbview = ipyclient.load_balanced_view()
 
         # set chunksize based on ncores and stored_labels
-        ncores = len(ipyclient)
-        self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
-        self.chunksize = min(500, self.chunksize)
-        self.chunksize = max(4, self.chunksize)
+        # ncores = len(ipyclient)
+        # self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
+        # self.chunksize = min(12, self.chunksize)
+        # self.chunksize = max(4, self.chunksize)
+        self.chunksize = 4
 
         # an iterator to return chunked slices of jobs
         jobs = range(self.checkpoint, self.nstored_labels, self.chunksize)
