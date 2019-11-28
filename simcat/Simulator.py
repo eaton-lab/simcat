@@ -29,7 +29,7 @@ class IPCoalWrapper:
     building the msprime simulations calls, and then calling .run() to fill
     count matrices and return them.
     """
-    def __init__(self, database_file, slice0, slice1, run=True):
+    def __init__(self, database_file, slice0, slice1, nthreads=2, run=True):
 
         # location of data
         self.database = database_file
@@ -42,8 +42,8 @@ class IPCoalWrapper:
         # fill the vector of simulated data for .counts
         if run:
             # infer count matrices on slice of data    
-            if PY3:
-                self.run_threads()
+            if (PY3 and nthreads):
+                self.run_threads(nthreads)
             else:
                 self.run()
 
@@ -86,6 +86,7 @@ class IPCoalWrapper:
         # ...
 
 
+
     def load_slice(self):
         """
         Pull data from .labels for use in ipcoal sims
@@ -110,12 +111,12 @@ class IPCoalWrapper:
                 (self.nvalues, self.nquarts, 16, 16), dtype=np.int64) 
 
 
-    def run_threads(self):
+
+    def run_threads(self, nthreads):
         """
         Multithread it
         """
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=nthreads) as executor:
 
             # run simulations
             for idx in range(self.nvalues):
@@ -146,14 +147,16 @@ class IPCoalWrapper:
                     Ne=None,
                     )
 
-                # simulate genealogies and snps
-                nsnps = int(self.nsnps / 2)
-                res = [
-                    executor.submit(thread_sim_snps, *(model, nsnps))
-                    for i in range(2)
-                ]
+                # start threaded jobs to simulate genealogies and snps
+                schunks = split_snps_to_chunks(self.nsnps, nthreads)
+                res = []
+                for chunk in schunks:
+                    rasync = executor.submit(
+                        thread_sim_snps, *(model, chunk)
+                    )
+                    res.append(rasync)
 
-                # TODO: ipcoal converter not fastest possible
+                # pull in results and reformat
                 resms = [i.result() for i in res]
                 matrix = np.concatenate(resms, axis=1)
                 mat = get_snps_count_matrix(tree, matrix)
@@ -208,5 +211,17 @@ class IPCoalWrapper:
 
 
 def thread_sim_snps(model, nsnps):
+    "call sim_snps on a subset of nsnps for threaded mode."
     model.sim_snps(nsnps)
     return model.seqs
+
+
+def split_snps_to_chunks(nsnps, nchunks):
+    "split nsnps into int chunks for threaded jobs summing to nsnps."
+    out = []
+    for i in range(nchunks):
+        if i == nchunks - 1:
+            out.append((nsnps // nchunks) + (nsnps % nchunks))
+        else:
+            out.append(nsnps // nchunks)
+    return out
