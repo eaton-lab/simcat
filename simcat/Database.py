@@ -245,9 +245,10 @@ class Database:
             if force:
                 i5 = h5py.File(self.labels, mode='w')
                 o5 = h5py.File(self.counts, mode='w')
-            # else:
-                # self.i5 = h5py.File(self.labels, mode='a')
-                # self.o5 = h5py.File(self.counts, mode='a')
+            else:
+                return 
+                # i5 = h5py.File(self.labels, mode='a')
+                # o5 = h5py.File(self.counts, mode='a')
 
         # store some database attribute info
         i5.attrs["tree"] = self.tree.write()
@@ -460,10 +461,6 @@ class Database:
             A connected ipyclient object. If ipcluster instance is
             not running on the default profile then ...
         """
-        # Fill all params into the database (this inits the Model objects
-        # which call ._get_test_values() to generate all simulation scenarios.
-        # self.init_databases(force=force)
-
         # distribute filling jobs in parallel
         pool = Parallel(
             tool=self,
@@ -474,69 +471,3 @@ class Database:
             quiet=self._quiet,
             )
         pool.wrap_run()
-
-
-
-
-# def fill_node_slides(self):
-#     """
-#     Perform node sliding to fill node heights and Nes to database.
-#     """ 
-
-#     # make copy of tree
-#     itree = self.tree.copy()
-#     # for node in itree.treenode.traverse():
-#     #    node.name = node.idx
-
-#     # store node heights and Nes
-#     idx = 0
-#     # for now just a constant Ne...
-#     Nes = np.repeat(self.Ne, itree.nnodes)
-#     for node in itree.treenode.traverse():
-#         node.add_feature('Ne', Nes[idx])
-#         idx += 1
-#     if not self.node_slider:
-#         all_trees = np.repeat(itree,
-#                               self.ntests)
-
-#     else:
-#         all_trees = np.array(
-#             [itree.mod.node_slider() for i in range(self.ntests)]
-#         )
-
-#     # note that this could also be a tree generator...
-#     eidx = 0
-#     for unique_tree in all_trees:  
-
-#         # get_all_admix_edges for each tree... 
-#         # because different trees will have different edges
-#         admixedges = get_all_admix_edges(
-#             unique_tree,
-#             0.0,
-#             1.0,
-#             self.exclude_sisters,
-#         )
-#         events = itt.combinations(admixedges.keys(), self.nedges)
-
-#         # tuple of admixture_edges as tuples with ranges to sample.
-#         for evt in events:
-#             for rep in range(self.nreps):
-#                 for node in unique_tree.treenode.traverse():
-#                     self.i5['node_heights'][eidx, node.idx] = node.height
-#                     self.i5['node_Nes'][eidx, node.idx] = node.Ne
-#                 admixlist = [
-#                     (
-#                         i[0],
-#                         i[1],
-#                         np.random.uniform(self.admix_edge_min,
-#                                           self.admix_edge_max),
-#                         np.random.uniform(self.admix_prop_min,
-#                                           self.admix_prop_max),
-#                     )
-#                     for i in evt
-#                 ]
-#                 admix_arg = str(admixlist).encode('ascii')
-#                 # in case we want to include an option for no admixture
-#                 self.i5['admixed'][eidx] = True
-#                 self.i5['admixture_args'][eidx] = admix_arg
-#                 eidx += 1
