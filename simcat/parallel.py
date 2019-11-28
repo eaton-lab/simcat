@@ -258,8 +258,9 @@ class Parallel(object):
                 assert len(self.ipyclient), "ipcluster not connected/running."
 
             # set ncores to max if user did not set
-            if not self.tool.ipcluster["cores"]:
-                self.tool.ipcluster["cores"] = detect_cpus()
+            else:
+                if not self.tool.ipcluster["cores"]:
+                    self.tool.ipcluster["cores"] = detect_cpus()
 
                 # launch ipcluster and get the parallel client with ipp-{} id
                 if self.auto:
