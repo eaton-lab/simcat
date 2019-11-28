@@ -98,6 +98,7 @@ class Database:
         force=False,
         quiet=False,
         random_sampling=True,
+        nthreads=2,
         ):
 
         # init random seed generator
@@ -118,7 +119,7 @@ class Database:
         self.checkpoint = 0
         self._quiet = quiet
         self._random_sampling = random_sampling
-        self.node_slider = node_slider
+        self._nthreads = nthreads
 
         # store params
         self.Ne = Ne
@@ -126,6 +127,7 @@ class Database:
             toytree.tree(tree) if isinstance(tree, str) else tree.copy())
         self._get_Ne()
         self.inodes = self.tree.nnodes - self.tree.ntips
+        self.node_slider = node_slider
 
         self.admix_edge_min = admix_edge_min
         self.admix_edge_max = admix_edge_max
@@ -393,7 +395,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_labels, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1)
+                args = (self.labels, slice0, slice1, self._nthreads, True)
                 rasyncs[slice0] = lbview.apply(IPCoalWrapper, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
