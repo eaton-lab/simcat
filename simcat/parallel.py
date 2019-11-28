@@ -119,7 +119,8 @@ class Parallel(object):
                 raise
 
         except Exception as inst:
-            sys.exit("Error launching ipcluster for parallelization:\n({})\n"
+            sys.exit(
+                "Error launching ipcluster for parallelization:\n({})\n"
                 .format(inst))
 
 
@@ -210,7 +211,7 @@ class Parallel(object):
             if not engine.outstanding:
                 hosts.append(engine.apply(socket.gethostname))
 
-        ## report it
+        # report it
         hosts = [i.get() for i in hosts]
         hostdict = {}
         for hostname in set(hosts):
@@ -223,6 +224,7 @@ class Parallel(object):
             "Parallelization: {}".format(", ".join(hpairs)))
 
 
+
     def store_pids_for_shutdown(self):
         "reset tool ipcluster dict pids dict and set with current engine pids"
         self.tool.ipcluster["pids"] = {}
@@ -233,14 +235,16 @@ class Parallel(object):
                 self.tool.ipcluster["pids"][eid] = pid
 
 
+
     def wrap_run(self, dry_run=False):
         """
         Takes an analysis tools object with an associated _ipcluster attribute
         dictionary and either launches an ipcluster instance or connects to a 
         running one. The ipyclient arg overrides the auto arg.
         """
+
         try:
-            # check that ipyclient is running by connecting (3 seconds tries)
+            # check that ipyclient is connected (3 seconds tries)
             if self.ipyclient:
                 for i in range(3):
                     if len(self.ipyclient):
@@ -249,20 +253,20 @@ class Parallel(object):
                         time.sleep(1)
                 assert len(self.ipyclient), "ipcluster not connected/running."
 
-            # launch ipcluster and get the parallel client with ipp-{} id
-            elif self.auto:
-                # set default to 4
-                if not self.tool.ipcluster["cores"]:
-                    self.tool.ipcluster["cores"] = 4
+            # set ncores to max if user did not set
+            if not self.tool.ipcluster["cores"]:
+                self.tool.ipcluster["cores"] = detect_cpus()
 
-                # start ipcluster and attach ipyrad-cli cluster-id
-                self.start_ipcluster()
-                self.ipyclient = self.wait_for_connection()
+                # launch ipcluster and get the parallel client with ipp-{} id
+                if self.auto:
+                    # start ipcluster and attach ipyrad-cli cluster-id
+                    self.start_ipcluster()
+                    self.ipyclient = self.wait_for_connection()
 
-            # neither auto or ipyclient entered, we'll still look for default
-            # profile running ipcluster.
-            else:
-                self.ipyclient = self.wait_for_connection()                
+                # neither auto or ipyclient we'll still look for default
+                # profile running ipcluster.
+                else:
+                    self.ipyclient = self.wait_for_connection()                
 
             # print cluster stats at this point
             self.widget.close()
@@ -325,9 +329,32 @@ class Parallel(object):
                     if self.show_cluster:
                         self.update_message("Parallel connection closed.")
                         time.sleep(0.5)
-        
+
             # close the cluster info
             self.widget.close()
 
         except Exception as inst2:
             print("warning: error during shutdown:\n{}".format(inst2))
+
+
+
+def detect_cpus():
+    """
+    Detects the number of CPUs on a system. This is better than asking
+    ipyparallel since ipp has to wait for Engines to spin up.
+    """
+    # Linux, Unix and MacOS:
+    if hasattr(os, "sysconf"):
+        if os.sysconf_names.get("SC_NPROCESSORS_ONLN"):
+            # Linux & Unix:
+            ncpus = os.sysconf("SC_NPROCESSORS_ONLN")
+            if isinstance(ncpus, int) and ncpus > 0:
+                return ncpus
+        else:  # OSX:
+            return int(os.popen2("sysctl -n hw.ncpu")[1].read())
+    # Windows:
+    if os.environ.get("NUMBER_OF_PROCESSORS"):
+        ncpus = int(os.environ["NUMBER_OF_PROCESSORS"])
+        if ncpus > 0:
+            return ncpus
+    return 1  # Default
