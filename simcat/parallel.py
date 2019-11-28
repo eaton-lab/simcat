@@ -22,6 +22,10 @@ from IPython.display import display
 from .utils import SimcatError
 
 
+IPCLUSTERBIN = os.path.join(sys.prefix, "bin", "ipcluster")
+
+
+
 class Parallel(object):
     """
     Connect or launch ipcluster and wrap jobs running on Client engines so 
@@ -79,7 +83,7 @@ class Parallel(object):
 
         # make ipcluster arg call
         standard = [
-            "ipcluster", "start",
+            IPCLUSTERBIN, "start",
             "--daemonize", 
             "--cluster-id={}".format(self.tool.ipcluster["cluster_id"]),
             "--engines={}".format(self.tool.ipcluster["engines"]),
@@ -98,7 +102,7 @@ class Parallel(object):
         # if cluster with THIS ID is running then kill it and try again
         except subprocess.CalledProcessError:
             subprocess.check_call([
-                "ipcluster", "stop", 
+                IPCLUSTERBIN, "stop", 
                 "--cluster-id", self.tool.ipcluster["cluster_id"],
             ], 
                 stderr=subprocess.STDOUT,
