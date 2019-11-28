@@ -313,8 +313,9 @@ class Parallel(object):
                     time.sleep(1)
                     for eid, pid in self.tool.ipcluster["pids"].items():
                         if self.ipyclient.queue_status()[eid]["tasks"]:
+                            # hard kill the process
                             os.kill(pid, 2)
-                    time.sleep(1)
+                    time.sleep(3)
                 except ipp.NoEnginesRegistered:
                     pass
 
