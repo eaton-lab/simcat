@@ -74,6 +74,8 @@ class IPCoalWrapper:
         #     mvar.reshape(mvar.shape[0], -1),         # variances
         # ], axis=1)
 
+        # compute ABBA, BABA and Hils statistic ratios...
+        # ...
 
 
     def load_slice(self):
@@ -120,7 +122,7 @@ class IPCoalWrapper:
                 if not node.is_leaf():
                     node.Ne = next(nes)
 
-            # get admixture tuples (only supports 1 egge like this right now)
+            # get admixture tuples (only supports 1 edge like this right now)
             admix = (
                 int(self.admixture[idx, 0]),
                 int(self.admixture[idx, 1]),
