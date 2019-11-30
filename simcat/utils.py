@@ -65,6 +65,7 @@ def get_all_admix_edges(ttree, lower=0.25, upper=0.75, exclude_sisters=False):
     return intervals
 
 
+
 def tile_reps(array, nreps):
     "used to fill labels in the simcat.Database for replicates"
     ts = array.size
@@ -74,6 +75,7 @@ def tile_reps(array, nreps):
         .reshape((nr, ts))
         .T.flatten())
     return result
+
 
 
 def get_snps_count_matrix(tree, seqs):
@@ -156,6 +158,12 @@ BABA_IDX = [
 FIXED_IDX = [
     (0, 0), (5, 5), (10, 10), (15, 15),
 ]
+AABB_IDX = [
+    (0, 5), (0, 10), (0, 15), 
+    (5, 0), (5, 10), (5, 15),
+    (10, 0), (10, 5), (10, 15),
+    (15, 0), (15, 5), (15, 10), 
+]
 
 
 def abba_baba(counts):
@@ -168,13 +176,13 @@ def abba_baba(counts):
     dstats = []
     quartets = []
     reps = []
-    
+
     # iterate over reps and quartets
     for rep in range(counts.shape[0]):
-        
+
         # quartet iterator
         quarts = itertools.combinations(range(counts.shape[1]), 4)
-    
+
         # iterate over each mat, quartet
         for matrix, qrt in zip(range(counts.shape[1]), quarts):
             count = counts[rep, matrix]
@@ -190,7 +198,7 @@ def abba_baba(counts):
 
             quartets.append(qrt)
             reps.append(rep)
-    
+
     # convert to dataframe   
     df = pd.DataFrame({
         "ABBA": np.array(abbas, dtype=int),
