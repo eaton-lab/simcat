@@ -5,7 +5,7 @@ Machine learning code for analyzing database info...
 """
 
 import os
-
+import itertools
 import toytree
 import toyplot
 import h5py
@@ -14,18 +14,21 @@ import pandas as pd
 
 from sklearn.manifold import TSNE
 from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.decomposition import NMF
+from sklearn.decomposition import NMF, PCA
 from sklearn.model_selection import train_test_split
 # from sklearn.metrics import confusion_matrix
 
-from .utils import ABBA_IDX, BABA_IDX, AABB_IDX
+# try to import multicore-TSNE if available clobbers the scikit version
+try:
+    from MulticoreTSNE import MulticoreTSNE as TSNE
+except ImportError:
+    pass
+
+from .utils import calculate_dstat, calculate_hils_f12, calculate_simple_f12
 
 
 """
 ## Ideas 
-1. Visualization and feature extraction: tSNE (base PCA or NMF)
-2. Visualization of features: NMF or ExtraTrees.
-3. Classification: ExtraTrees using raw or extracted features.
 4. Classification + linear fit (e.g., supervised with edges and props.)
 
 5. For a given true tree, we can map onto it which edges CAN be inferred and 
@@ -53,8 +56,15 @@ class Analysis(object):
         print progress
     seed: (int)
         random seed
-
-
+    outgroup: (str or int)
+        The idx label(s) of an outgroup clade. If setting this option it is 
+        assumed this clade is not involved in admixture. The SNPs count data 
+        is still used for this clade when inferring all other admixture edges
+        but simulations that include admixture edges to or from this taxon 
+        are removed from the training and test data.
+    features: list
+        Compute additional featues on the count data and add to the flattened
+        feature vector (X). Current options include ["dstat", "f12",]
     """
     def __init__(
         self,
@@ -68,6 +78,8 @@ class Analysis(object):
         mask_sisters=False,
         exclude_admixture_min=0.0,
         exclude_sisters=False,
+        outgroup=None,
+        features=None,
         quiet=False,
         seed=None,
         ):
@@ -79,13 +91,15 @@ class Analysis(object):
         self.db_labels = os.path.join(self.workdir, self.name + ".labels.h5")
         self.scale = scale
         self.ulabel = ulabel
-        self.transform = transform
+        self._transform = transform
         self.quiet = quiet
         self.seed = seed
         self.mask_admixture_min = mask_admixture_min
         self.mask_sisters = mask_sisters
         self.exclude_admixture_min = exclude_admixture_min
         self.exclude_sisters = exclude_sisters
+        self.outgroup = outgroup
+        self.features = (features if features else [])
         assert os.path.exists(self.db_labels), (
             "path not found: {}".format(self.db_labels))
         assert os.path.exists(self.db_counts), (
@@ -98,6 +112,8 @@ class Analysis(object):
         self.df = None
         self.X = None
         self.y = None
+
+        print("[init] {}".format(self.name))
         self.load_counts()
         self.load_labels()
 
@@ -105,11 +121,9 @@ class Analysis(object):
         self.apply_masks()
         self.apply_filters()
         self.reshape_to_Xy()
-        self.report()
 
         # transform data to reduce dimensionality / extract features
-        self.add_babas_feature()
-        # self.add_hils_feature()
+        self.add_features()
         self.transform_data()
 
         # fill test/train with split dataset 
@@ -137,12 +151,13 @@ class Analysis(object):
             # load the tree that was used in the simulations and the data
             self.tree = toytree.tree(io5.attrs["tree"])
             self.counts = io5["counts"][:]
+            self.svds = io5["svds"][:]
 
             # [1] rescale to make counts proportional across ALL sims.
             # this seems to work much better than [2].
             if self.scale == 1:
                 self.counts = self.counts / self.counts.max()
-
+                self.svds = self.svds / self.svds.max()
 
             # [2] rescale by make counts proportional across sims on same tree.
             if self.scale == 2:
@@ -154,6 +169,8 @@ class Analysis(object):
                         self.counts[i, j] = (
                             self.counts[i, j] / self.counts[i, j].max()
                         )
+            if not self.quiet:
+                print("[load] {}".format(self.counts.shape))
 
 
 
@@ -199,24 +216,6 @@ class Analysis(object):
 
 
 
-    def report(self):
-        """
-        print a summary of the data
-        """
-        # print to screen
-        if not self.quiet:
-            print("Dataset: {}".format(self.name))
-            print("loaded counts matrix: {}".format(self.counts.shape))
-            if self.scale == 1:
-                print("scaled integers to floats by max count")
-            if self.scale == 2:
-                print("scaled integers to floats by each quartet max count")
-            print("reshaped into X: {}".format(self.X.shape))
-            print("loaded labels DataFrame: {}".format(self.df.shape))
-            print("subset as y: {}".format(self.y.shape))        
-
-
-
     def apply_masks(self):
         """
         Filter dataset to remove admixture edges between sisters or 
@@ -251,14 +250,19 @@ class Analysis(object):
         else:
             keepb = self.df.sisters > -1
 
+        if self.outgroup:
+            keepc = self.df.label.apply(lambda x: self.outgroup not in x)
+        else:
+            keepc = self.df.sisters > -1
+
         # drop tests
-        keep = keepa.values & keepb.values
+        keep = keepa.values & keepb.values & keepc.values
         self.df = self.df.loc[keep, :].reset_index(drop=True)
         self.counts = self.counts[keep, :]
 
         # report
         if not self.quiet:
-            print("subset data to: {} tests".format(self.counts.shape[0]))
+            print("[filter] {}".format(self.counts.shape))
 
 
 
@@ -274,156 +278,193 @@ class Analysis(object):
             self.y = self.df.ulabel
         else:
             self.y = self.df.label
+        print("[vectorize] {}".format(self.X.shape))
 
 
+    def add_features(self):
+        if "dstat" in self.features:
+            self.add_dstat_feature()
+        if "f12" in self.features:
+            self.add_simple_f12()
+        if "h12" in self.features:
+            self.add_hils12_feature()
+        if "svd" in self.features:
+            self.add_svd_feature()
+        if "pca" in self.features:
+            self.add_pca_feature()
+        if "tsne" in self.features:
+            self.add_tsne_feature()
+        # if "counts" in self.features:
+            # self.add_counts()
 
-    def add_babas_feature(self):
-        """
-        calculate dstatistic for each matrix.
-        """
+
+    def add_svd_feature(self):
 
         # empty arr for results
-        babas = np.zeros((self.counts.shape[0], self.counts.shape[1]))
+        svds = np.zeros((self.counts.shape[0], self.counts.shape[1], 16))
 
         # iterate over each test and matrix sets
-        for a in range(babas.shape[0]):
-            for b in range(babas.shape[1]):
+        for test in range(svds.shape[0]):
+            for qset in range(self.counts.shape[1]):
                 # this matrix
-                mat = self.counts[a, b]
-
-                # calculate
-                abba = sum([mat[i] for i in ABBA_IDX])
-                baba = sum([mat[i] for i in BABA_IDX])
-                dstat = (abba - baba) / (abba + baba)
-
-                # store result 
-                babas[a, b] = dstat
+                mat = self.counts[test, qset]
+                u, s, v = np.linalg.svd(mat)
+                svds[test, qset] = s
 
         # append to the counts as additional feature
-        self.X = np.concatenate([self.X, babas], axis=1)
+        self.X = np.concatenate(
+            [self.X, svds.reshape(self.X.shape[0], -1)],
+            axis=1,
+        )
 
         # report
         if not self.quiet:
-            print("added {} features from abba-baba".format(babas.shape[1]))
+            print("added {} features (svds)".format(svds.shape))
 
 
 
-    def add_hils_feature(self):
+    def add_dstat_feature(self):
+        """
+        calculate dstatistic for each matrix.
+        """
+        # empty arr for results
+        dstats = np.zeros((self.counts.shape[0], self.counts.shape[1]))
+
+        # iterate over each test and matrix sets
+        for test in range(dstats.shape[0]):
+            for qset in range(dstats.shape[1]):
+                # this matrix
+                mat = self.counts[test, qset]
+                dstats[test, qset] = calculate_dstat(mat)
+
+        # append to the counts as additional feature
+        self.X = np.concatenate([self.X, dstats], axis=1)
+
+        # report
+        print(
+            "[feature extraction] added {} features (dstat)"
+            .format(dstats.shape[1])
+        )
+
+
+    def add_simple_f12(self):
+        # empty arr for results
+        hils12 = np.zeros((self.counts.shape[0], self.counts.shape[1]))
+
+        # iterate over each test and matrix sets
+        for test in range(hils12.shape[0]):
+            for qset in range(hils12.shape[1]):
+                # this matrix
+                mat = self.counts[test, qset]
+                hils12[test, qset] = calculate_simple_f12(mat)
+
+        # append to the counts as additional feature
+        self.X = np.concatenate([self.X, hils12], axis=1)
+
+        # report
+        if not self.quiet:
+            print("added {} features (Hils f1/f2)".format(hils12.shape[1]))
+
+
+
+    def add_hils12_feature(self):
         """
         calculate hils statistic using aabb, abba, baba, aaab. This uses
         information about nsites and so should be applied to the full 
         counts data.
-
-        TODO: this is incomplete. The final equation (13) is not yet finalized
-        from the paper in the end here, and there is the problem of flipping
-        the null hypothesis depending on whether p1 or p2 is the hybrid 
-        taxon. Search "(below)" in the paper to find the relevant section.
         """
-
         # empty arr for results
-        hils = np.zeros((self.counts.shape[0], self.counts.shape[1], 3))
+        hils12 = np.zeros((self.counts.shape[0], self.counts.shape[1]))
 
         # iterate over each test and matrix sets
-        for a in range(hils.shape[0]):
-            for b in range(hils.shape[1]):
+        for test in range(hils12.shape[0]):
+            for qset in range(hils12.shape[1]):
                 # this matrix
-                mat = self.counts[a, b]
-                nsites = mat.sum()
-
-                # calculate
-                nabba = sum([mat[i] for i in ABBA_IDX])
-                nbaba = sum([mat[i] for i in BABA_IDX])
-                naabb = sum([mat[i] for i in AABB_IDX])
-                abba = nabba / nsites
-                baba = nbaba / nsites
-                aabb = naabb / nsites
-
-                f1 = aabb - baba
-                f2 = abba - baba
-                ratio = (f1 / f2)
-                if f1 == f2:
-                    hils[a, b] = 0, f1, f2
-                    continue
-
-                sigmaf1 = (
-                    (1. / nsites) * sum([
-                        aabb * (1. - aabb),
-                        baba * (1. - baba), 
-                        2. * aabb * baba
-                        ])
-                    )
-                sigmaf2 = (
-                    (1. / nsites) * sum([
-                        abba * (1. - abba),
-                        baba * (1. - baba),
-                        2. * abba * baba,
-                        ])
-                    )
-
-                covf1f2 = (
-                    (1. / nsites) * sum([
-                        abba * (1. - aabb),
-                        aabb * baba,
-                        abba * baba,
-                        baba * (1. - baba)
-                        ])
-                    )
-
-                numerator = (sigmaf2 * ratio) - sigmaf1
-                p1 = sigmaf2 * ratio ** 2.
-                p2 = 2 * covf1f2 * ratio + sigmaf1
-                denominator = np.sqrt(p1 - p2)
-                hils[a, b] = numerator / denominator
-
-                num = f2 * ((f1 / f2) - 0.)
-                p1 = (sigmaf2 * (f1 / f2)**2)
-                p2 = ((2. * covf1f2 * (f1 / f2) + sigmaf1))
-                denom = p1 - p2
-
-                # calculate hils
-                H = num / np.sqrt(abs(denom))
-                hils[a, b] = H, f1, f2
-
+                mat = self.counts[test, qset]
+                hils12[test, qset] = calculate_hils_f12(mat)
 
         # append to the counts as additional feature
-        # self.X = np.concatenate([self.X, babas], axis=1)
+        self.X = np.concatenate([self.X, hils12], axis=1)
 
         # report
         if not self.quiet:
-            print("added {} features from abba-baba".format(babas.shape[1]))
+            print("added {} features (Hils f1/f2)".format(hils12.shape[1]))
 
 
 
-    def transform_data(self):
+    def add_pca_feature(self, n_components=10):
         """
-        Use a dimensionality reduction method.
+        Add PC axes loadings as new features
         """
-        if not self.transform:
-            return 
+        loadings = PCA(n_components=n_components).fit_transform(self.X)
+        self.X = np.concatenate([self.X, loadings], axis=1)
+        if not self.quiet:
+            print(
+                "[feature extraction] added {} features (PCA)"
+                .format(loadings.shape[1])
+            )
+
+
+
+    def add_tsne_feature(self, perplexity=50):
+        """
+        Add PC axes loadings as new features
+        """
+        tsne = TSNE(
+            n_components=2,
+            perplexity=50,
+            n_iter=1000,
+            random_state=0
+        )
+        Xt = tsne.fit_transform(self.X)
+        self.X = np.concatenate([self.X, Xt], axis=1)
+        if not self.quiet:
+            print(
+                "[feature extraction] added {} features (t-SNE)"
+                .format(Xt.shape[1])
+            )
+
+
+
+    def transform_data(self, model=None):
+        """
+        Use a dimensionality reduction method to update .Xt
+        """
+        # get transform method
+        transformer = (model if model else self._transform)
+        if not transformer:
+            self.Xt = self.X
+            return
+
+        # clean method name
+        transformer = transformer.lower().replace("-", "")
 
         # NMF n_components can be nfeatures-1 but slow
-        if self.transform in ("nmf", "NMF"):
+        if transformer == "nmf":
             if not self.quiet:
-                print("training NMF model for data tranform")
+                print("transforming data X with NMF to Xt")
             nmf = NMF(
                 n_components=50, 
                 init="random", 
                 random_state=0)
-            self.X = nmf.fit_transform(self.X)
+            self.Xt = nmf.fit_transform(self.X)
 
 
         # TSNE perplexity and n-iter are important
-        if self.transform in ("tsne", "TSNE", "t-SNE", "T-SNE"):
+        if transformer == "tsne":
             if not self.quiet:
-                print("training T-SNE model for data tranform")
+                print("transforming data X with T-SNE to Xt")
             tsne = TSNE(
                 n_components=2,
                 perplexity=50,
-                init="pca",
                 n_iter=1000,
                 random_state=0
             )
-            self.X = tsne.fit_transform(self.X)
+            self.Xt = tsne.fit_transform(self.X)
+
+
+        if transformer == "pca":
+            self.Xt = PCA().fit_transform(self.X)
 
 
 
@@ -432,7 +473,7 @@ class Analysis(object):
 
         # split data and labels
         a, b, c, d = train_test_split(
-            self.X, 
+            self.Xt, 
             self.y, 
             test_size=prop,
             random_state=self.seed,
@@ -446,7 +487,7 @@ class Analysis(object):
 
         # print to screen
         if not self.quiet:
-            print("split train/test data: {}/{}".format(
+            print("[train/test] {}/{}".format(
                 self.X_train.shape, self.X_test.shape))
 
 
@@ -461,7 +502,6 @@ class Analysis(object):
         # select the model
         self.model = ExtraTreesClassifier(
             n_estimators=10000, 
-            # max_features=np.sqrt(n_features).astype(int),
             n_jobs=4, 
             random_state=self.seed,
         )
@@ -566,20 +606,88 @@ class Analysis(object):
 
 
 
-    def tsne_plot(self):
+    def draw_tsne_plot(self, perplexity=50, n_iter=10000, random_state=None):
+        """
+        Draw 2-D plot of t-SNE transformed data (Xt). 
+        """
+        # get transformed data
+        tsne = TSNE(
+            n_components=2,
+            perplexity=perplexity,
+            n_iter=n_iter,
+            random_state=random_state,
+            n_jobs=4,
+        )
+        pca = PCA()
+        self.Xt = tsne.fit_transform(pca.fit_transform(self.X))
+        self._draw_scatter(self.Xt[:, 0], self.Xt[:, 1])
 
 
-        # build color vector
-        colors = [0] * self.df.shape[0]
+
+    def _draw_scatter(self, dataX, dataY):
+        """
+        2-D scatterplot...
+        """
+        # iterate through colors and shapes
+        colors = toyplot.color.brewer.palette("Paired")
+        colorshapes = itertools.product(["o", "s", "d", "v"], colors)
+
+        # color dictionary applied grey to NaN (masked) labels
+        cdict = {
+            "NaN": {
+                "fill": 'rgba(74.1%,74.1%,74.1%,1.000)', 
+                'stroke': 'none',
+            },
+        }
+
+        # apply same color to fill or stroke for edges in each direction
+        labels = set(self.df.ulabel[self.df.sisters == 0])
+        labels = labels - {"NaN"}
+        for label, colorshape in zip(labels, colorshapes):
+
+            shape, color = colorshape
+
+            # set ->
+            cdict[label] = {
+                "marker": shape,
+                "stroke": "none",
+                "fill": toyplot.color.to_css(color),
+            }
+
+            # set <-
+            alt = "{1},{0}".format(*label.split(","))
+            cdict[alt] = {
+                "shape": shape,
+                "stroke": toyplot.color.to_css(color),
+                "stroke-width": 1.5,
+                "fill": 'rgba(100%,100%,100%,1.000)',
+            }
+
+        # generate markers for each test
+        markers = []
         for idx in self.df.index:
             if self.df.sisters[idx]:
-                colors[idx] = 1
-            if self.df.asource[idx] == 5:
-                colors[idx] = 2
-            if self.df.asource[idx] == 4:
-                colors[idx] = 3
-        colors = [toyplot.color.Palette()[i] for i in colors]
+                mark = toyplot.marker.create(
+                    shape="o",
+                    size=3,  # + (ml.df.aprop[idx] / ml.df.aprop.max()) * 10,# * 35,
+                    mstyle=cdict["NaN"])
+
+            else:
+                mark = toyplot.marker.create(
+                    shape='o',
+                    size=3 + (self.df.aprop[idx] / self.df.aprop.max()) * 10,# * 35,
+                    mstyle=cdict[self.df.label[idx]],
+                )
+            markers.append(mark)
 
 
-        # save a 3D plot if 3-dimension...
-        # TODO w/ ipyvolume.
+        canvas, axes, mark = toyplot.scatterplot(
+            dataX,
+            dataY,
+            width=400, height=400,
+            marker=markers,
+            title=self.df.label,
+        )
+        axes.x.label.text = "t-SNE axis 1"
+        axes.y.label.text = "t-SNE axis 2"
+        return canvas, axes, mark
