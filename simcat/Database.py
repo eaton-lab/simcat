@@ -263,16 +263,9 @@ class Database:
         # analysis we can best take advantage of different combinations of the
         # data and its structure.
         smat = (self.nstored_labels, self.nquarts, 16, 16)
-        svdu = (self.nstored_labels, self.nquarts, 16, 16)
-        svdv = (self.nstored_labels, self.nquarts, 16, 16)
-        svds = (self.nstored_labels, self.nquarts, 16)
-        mvar = (self.nstored_labels, 16, 16)
+
         # countsize = (self.nstored_labels, snps + svdu + svdv + svds + mvar)
         o5.create_dataset(name="counts", shape=smat, dtype=np.int64, compression="gzip")
-        o5.create_dataset(name="svdu", shape=svdu, dtype=np.float64)
-        o5.create_dataset(name="svdv", shape=svdv, dtype=np.float64)
-        o5.create_dataset(name="svds", shape=svds, dtype=np.float64)
-        o5.create_dataset(name="mvar", shape=mvar, dtype=np.float64)
 
         # array of node heights,Nes in traverse order (-tips)
         lnodes = (self.nstored_labels, self.inodes)
@@ -421,10 +414,6 @@ class Database:
                         # object returns, pull out results
                         res = rasync.get()
                         io5["counts"][job:job + self.chunksize, :] = res.counts
-                        io5["svdu"][job:job + self.chunksize, :] = res.svdu
-                        io5["svds"][job:job + self.chunksize, :] = res.svds
-                        io5["svdv"][job:job + self.chunksize, :] = res.svdv
-                        io5["mvar"][job:job + self.chunksize, :] = res.mvar
 
                         # free up memory from job
                         del rasyncs[job]
