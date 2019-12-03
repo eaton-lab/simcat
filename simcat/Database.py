@@ -16,7 +16,6 @@ import itertools as itt
 import toytree
 import numpy as np
 
-# from .Simulator import Simulator
 from .parallel import Parallel
 from .Simulator import IPCoalWrapper
 from .utils import get_all_admix_edges, SimcatError, Progress
@@ -446,7 +445,7 @@ class Database:
             progress.widget.close()
             print(
                 "completed {} simulations in {}."
-                .format(njobs, progress.elapsed)
+                .format(self.nstored_labels, progress.elapsed)
             )
 
         finally:
