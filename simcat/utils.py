@@ -4,123 +4,10 @@ import time
 import datetime
 import itertools
 import numpy as np
-import pandas as pd
 
 from ipywidgets import IntProgress, HTML, Box
 from IPython.display import display
 from .jitted import count_matrix_int
-
-
-class SimcatError(Exception):
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
-
-
-def get_all_admix_edges(ttree, lower=0.25, upper=0.75, exclude_sisters=False):
-    """
-    Find all possible admixture edges on a tree. Edges are unidirectional, 
-    so the source and dest need to overlap in time interval. To retrict 
-    migration to occur away from nodes (these can be harder to detect when 
-    validating methods) you can set upper and lower limits. For example, to 
-    make all source migrations to occur at the midpoint of overlapping 
-    intervals in which migration can occur you can set upper=.5, lower=.5.   
-    """
-    # bounds on edge overlaps
-    if lower is None:
-        lower = 0.0
-    if upper is None:
-        upper = 1.0
-
-    ## for all nodes map the potential admixture interval
-    for snode in ttree.treenode.traverse():
-        if snode.is_root():
-            snode.interval = (None, None)
-        else:
-            snode.interval = (snode.height, snode.up.height)
-
-    ## for all nodes find overlapping intervals
-    intervals = {}
-    for snode in ttree.treenode.traverse():
-        for dnode in ttree.treenode.traverse():
-            if not any([snode.is_root(), dnode.is_root(), dnode == snode]):
-
-                ## [option] skip sisters
-                if (exclude_sisters) & (dnode.up == snode.up):
-                    continue
-
-                ## check for overlap
-                smin, smax = snode.interval
-                dmin, dmax = dnode.interval
-
-                ## find if nodes have interval where admixture can occur
-                low_bin = np.max([smin, dmin])
-                top_bin = np.min([smax, dmax])              
-                if top_bin > low_bin:
-
-                    # restrict migration within bin to a smaller interval
-                    length = top_bin - low_bin
-                    low_limit = low_bin + (length * lower)
-                    top_limit = low_bin + (length * upper)
-                    intervals[(snode.idx, dnode.idx)] = (low_limit, top_limit)
-    return intervals
-
-
-
-def tile_reps(array, nreps):
-    "used to fill labels in the simcat.Database for replicates"
-    ts = array.size
-    nr = nreps
-    result = np.array(
-        np.tile(array, nr)
-        .reshape((nr, ts))
-        .T.flatten())
-    return result
-
-
-
-def get_snps_count_matrix(tree, seqs):
-    """
-    Compiles SNP data into a nquartets x 16 x 16 count matrix with the order
-    of quartets determined by the shape of the tree.
-    """
-    # get nquartets without requiring scipy (slower for biiig data tho)
-    nquarts = sum(1 for i in itertools.combinations(range(tree.ntips), 4))
-
-    # shape of the arr (count matrix)
-    arr = np.zeros((nquarts, 16, 16), dtype=np.int64)
-
-    # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
-    quartidx = 0
-    qiter = itertools.combinations(range(tree.ntips), 4)
-    for currquart in qiter:
-        # cols indices match tip labels b/c we named tips node.idx
-        quartsnps = seqs[currquart, :]
-        # save as stacked matrices
-        arr[quartidx] = count_matrix_int(quartsnps.T)
-        # save flattened to counts
-        quartidx += 1
-    return arr
-
-# def progress_bar(njobs, nfinished, start, message=""):
-#     "prints a progress bar"
-#     ## measure progress
-#     if njobs:
-#         progress = 100 * (nfinished / njobs)
-#     else:
-#         progress = 100
-
-#     ## build the bar
-#     hashes = "#" * int(progress / 5.)
-#     nohash = " " * int(20 - len(hashes))
-
-#     ## get time stamp
-#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-
-#     ## print to stderr
-#     args = [hashes + nohash, int(progress), elapsed, message]
-#     print("\r[{}] {:>3}% | {} | {}".format(*args), end="")
-#     sys.stderr.flush()
-
 
 
 __INVARIANTS__ = """
@@ -158,6 +45,8 @@ BABA_IDX = [
 FIXED_IDX = [
     (0, 0), (5, 5), (10, 10), (15, 15),
 ]
+
+# HILS f1/f2
 AABB_IDX = [
     (0, 5), (0, 10), (0, 15), 
     (5, 0), (5, 10), (5, 15),
@@ -165,52 +54,38 @@ AABB_IDX = [
     (15, 0), (15, 5), (15, 10), 
 ]
 
+# HILS f3 (ijii - jiii) and f4 (iiji - iiij)
+ABAA_IDX = [
+    (1, 0), (2, 0), (3, 0),
+    (4, 5), (5, 5), (6, 5),
+    (8, 10), (9, 10), (11, 10),
+    (12, 15), (13, 15), (14, 15),
+]
+BAAA_IDX = [
+    (4, 0), (8, 0), (12, 0),
+    (1, 5), (9, 5), (13, 5),
+    (2, 10), (6, 10), (14, 10),
+    (3, 15), (7, 15), (11, 15),
+]
+AABA_IDX = [
+    (0, 4), (0, 8), (0, 12), 
+    (5, 1), (5, 9), (5, 13),
+    (10, 2), (10, 6), (10, 14),
+    (15, 3), (15, 7), (15, 11),
+]
+AAAB_IDX = [
+    (0, 1), (0, 2), (0, 3),
+    (5, 4), (5, 6), (5, 7),
+    (10, 8), (10, 9), (10, 11),
+    (15, 12), (15, 13), (15, 14),
+]
 
-def abba_baba(counts):
-    """
-    Calculate ABBA/BABA statistic (D) as (ABBA - BABA) / (ABBA + BABA)
-    """
-    # store vals
-    abbas = []
-    babas = []
-    dstats = []
-    quartets = []
-    reps = []
 
-    # iterate over reps and quartets
-    for rep in range(counts.shape[0]):
 
-        # quartet iterator
-        quarts = itertools.combinations(range(counts.shape[1]), 4)
 
-        # iterate over each mat, quartet
-        for matrix, qrt in zip(range(counts.shape[1]), quarts):
-            count = counts[rep, matrix]
-
-            abba = sum([count[i] for i in ABBA_IDX])
-            abbas.append(abba)
-
-            baba = sum([count[i] for i in BABA_IDX])
-            babas.append(baba)
-
-            dstat = abs(abba - baba) / (abba + baba)
-            dstats.append(dstat)
-
-            quartets.append(qrt)
-            reps.append(rep)
-
-    # convert to dataframe   
-    df = pd.DataFrame({
-        "ABBA": np.array(abbas, dtype=int),
-        "BABA": np.array(babas, dtype=int),
-        "D": dstats,
-        "quartet": quartets,
-        "reps": reps,
-        }, 
-        columns=["reps", "ABBA", "BABA", "D", "quartet"],
-    )
-    return df
-
+class SimcatError(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
 
 
 class Progress(object):
@@ -275,3 +150,203 @@ class Progress(object):
 
     def increment_time(self):
         self.label.value = self.printstr
+
+
+
+def get_all_admix_edges(ttree, lower=0.25, upper=0.75, exclude_sisters=False):
+    """
+    Find all possible admixture edges on a tree. Edges are unidirectional, 
+    so the source and dest need to overlap in time interval. To retrict 
+    migration to occur away from nodes (these can be harder to detect when 
+    validating methods) you can set upper and lower limits. For example, to 
+    make all source migrations to occur at the midpoint of overlapping 
+    intervals in which migration can occur you can set upper=.5, lower=.5.   
+    """
+    # bounds on edge overlaps
+    if lower is None:
+        lower = 0.0
+    if upper is None:
+        upper = 1.0
+
+    # for all nodes map the potential admixture interval
+    for snode in ttree.treenode.traverse():
+        if snode.is_root():
+            snode.interval = (None, None)
+        else:
+            snode.interval = (snode.height, snode.up.height)
+
+    # for all nodes find overlapping intervals
+    intervals = {}
+    for snode in ttree.treenode.traverse():
+        for dnode in ttree.treenode.traverse():
+            if not any([snode.is_root(), dnode.is_root(), dnode == snode]):
+
+                # [option] skip sisters
+                if (exclude_sisters) & (dnode.up == snode.up):
+                    continue
+
+                # check for overlap
+                smin, smax = snode.interval
+                dmin, dmax = dnode.interval
+
+                # find if nodes have interval where admixture can occur
+                low_bin = np.max([smin, dmin])
+                top_bin = np.min([smax, dmax])              
+                if top_bin > low_bin:
+
+                    # restrict migration within bin to a smaller interval
+                    length = top_bin - low_bin
+                    low_limit = low_bin + (length * lower)
+                    top_limit = low_bin + (length * upper)
+                    intervals[(snode.idx, dnode.idx)] = (low_limit, top_limit)
+    return intervals
+
+
+
+def get_snps_count_matrix(tree, seqs):
+    """
+    Compiles SNP data into a nquartets x 16 x 16 count matrix with the order
+    of quartets determined by the shape of the tree.
+    """
+    # get nquartets without requiring scipy (slower for biiig data tho)
+    nquarts = sum(1 for i in itertools.combinations(range(tree.ntips), 4))
+
+    # shape of the arr (count matrix)
+    arr = np.zeros((nquarts, 16, 16), dtype=np.int64)
+
+    # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
+    quartidx = 0
+    qiter = itertools.combinations(range(tree.ntips), 4)
+    for currquart in qiter:
+        # cols indices match tip labels b/c we named tips node.idx
+        quartsnps = seqs[currquart, :]
+        # save as stacked matrices
+        arr[quartidx] = count_matrix_int(quartsnps)
+        # save flattened to counts
+        quartidx += 1
+    return arr
+
+
+
+def calculate_dstat(mat):
+    """
+    Calculate ABBA-BABA (D-statistic) from a count matrix. 
+    """
+    # calculate
+    abba = sum([mat[i] for i in ABBA_IDX])
+    baba = sum([mat[i] for i in BABA_IDX])
+    if abba + baba == 0:
+        dstat = 0.
+    else:
+        dstat = (abba - baba) / (abba + baba)
+    return dstat
+
+
+
+def calculate_simple_f12(mat):
+    """
+    Returns the f1/f2 ratio from Kubatko and Chifman 2019, in this case it 
+    is not normalized into a test statistic.
+    """
+    nsites = mat.sum()
+    nabba = sum([mat[i] for i in ABBA_IDX])
+    nbaba = sum([mat[i] for i in BABA_IDX])
+    naabb = sum([mat[i] for i in AABB_IDX])
+    abba = nabba / nsites
+    baba = nbaba / nsites
+    aabb = naabb / nsites   
+    f1 = float(aabb - baba)
+    f2 = float(abba - baba)
+    if f2 == 0.:
+        return 0.
+    return f1 / f2
+
+
+
+def calculate_hils_f12(mat, gamma=0.):
+    """
+    Calculate the f12 Hils statistic from Kubatko and Chifman 2019.
+    """
+    nsites = mat.sum()
+
+    # calculate
+    nabba = sum([mat[i] for i in ABBA_IDX])
+    nbaba = sum([mat[i] for i in BABA_IDX])
+    naabb = sum([mat[i] for i in AABB_IDX])
+    abba = nabba / nsites
+    baba = nbaba / nsites
+    aabb = naabb / nsites
+
+    f1 = aabb - baba
+    f2 = abba - baba
+    if f2 == 0.:
+        return 0.
+
+    sigmaf1 = (
+        (1. / nsites) * sum([
+            aabb * (1. - aabb),
+            baba * (1. - baba), 
+            2. * aabb * baba
+            ])
+        )
+    sigmaf2 = (
+        (1. / nsites) * sum([
+            abba * (1. - abba),
+            baba * (1. - baba),
+            2. * abba * baba,
+            ])
+        )
+
+    covf1f2 = (
+        (1. / nsites) * sum([
+            abba * (1. - aabb),
+            aabb * baba,
+            abba * baba,
+            baba * (1. - baba)
+            ])
+        )
+
+    ratio = gamma / (1. - gamma)
+    num = f2 * ((f1 / f2) - ratio)
+    p1 = (sigmaf2 * (ratio**2))
+    p2 = ((2. * covf1f2 * ratio) + sigmaf1)
+    denom = p1 - p2
+
+    # calculate hils
+    H = num / np.sqrt(abs(denom))
+    return H
+
+
+
+
+# def progress_bar(njobs, nfinished, start, message=""):
+#     "prints a progress bar"
+#     ## measure progress
+#     if njobs:
+#         progress = 100 * (nfinished / njobs)
+#     else:
+#         progress = 100
+
+#     ## build the bar
+#     hashes = "#" * int(progress / 5.)
+#     nohash = " " * int(20 - len(hashes))
+
+#     ## get time stamp
+#     elapsed = datetime.timedelta(seconds=int(time.time() - start))
+
+#     ## print to stderr
+#     args = [hashes + nohash, int(progress), elapsed, message]
+#     print("\r[{}] {:>3}% | {} | {}".format(*args), end="")
+#     sys.stderr.flush()
+
+
+
+# def tile_reps(array, nreps):
+#     "used to fill labels in the simcat.Database for replicates"
+#     ts = array.size
+#     nr = nreps
+#     result = np.array(
+#         np.tile(array, nr)
+#         .reshape((nr, ts))
+#         .T.flatten())
+#     return result
