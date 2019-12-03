@@ -51,7 +51,7 @@ class IPCoalWrapper:
             pass
 
             # get more features from the counts and flatten to .vector
-            self.add_features()
+            # self.add_features()
 
 
 
