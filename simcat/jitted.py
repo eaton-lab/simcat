@@ -60,9 +60,10 @@ def mutate_jc(geno, ntips):
     # return dtypes must match
     return np.zeros(0, dtype=np.int64)  
 
+
 @njit
 def base_to_int(geno_arr):
-    basetrans = np.zeros(len(geno_arr),dtype=np.int8)
+    basetrans = np.zeros(len(geno_arr), dtype=np.int8)
     for basenum in np.arange(len(geno_arr)):
         geno_arr[basenum]
         if  geno_arr[basenum] == 'A':
