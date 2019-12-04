@@ -45,6 +45,19 @@ class Database:
         unless the argument 'edge_function' is used, in which case edge lengths
         are drawn from a distribution.
 
+    Ne_min: int (default=1e4)
+        Effective population size (Ne) minimum value sampled randomly 
+        across ntests.
+
+    Ne_max: int (default=1e5)
+        Effective population size (Ne) maximum value sampled randomly 
+        across ntests.
+
+    Ne_fixed: bool (default=True)
+        If True then a single Ne value is sampled and applied to all edges 
+        of the tree in each simulation. Else different values are randomly 
+        sampled for all edges of the tree in the selected range for ntests.
+
     nedges: int (default=0)
         The number of admixture edges to add to each tree at a time. All edges
         will be drawn on the tree that can connect any branches which overlap
@@ -53,7 +66,7 @@ class Database:
         all possible events will be tested.
         * Each nedge increases nvalues by nevents * ntests * nreps.
 
-    ntests: int (default=100)
+    ntests: int (default=10)
         The number of parameters to draw for each admixture_event described
         by an edge but sampling different durations, magnitudes, and mutation
         rates (theta). For example, (2, 1, None, None, None) could draw
@@ -61,13 +74,13 @@ class Database:
         and (2, 1, 0.2, 0.4, 0.02) and theta=0.2 in another.
         * Each ntest increases nvalues by nreps.
 
-    nreps: int (default=10)
+    nreps: int (default=1)
         The number of replicate simulations to run per admixture scenario,
         sampled tree, and parameter set (nevent, ntree, ntest). Replicate
         simulations make identical calls to msprime but get variable result
         matrices due to variability in the coalescent process.
 
-    nsnps: int (default=1000)
+    nsnps: int (default=20000)
         The number of SNPs in each simulation that are used to build the
         16x16 arrays of phylogenetic invariants for each quartet sample.
 
@@ -82,11 +95,13 @@ class Database:
         name,
         workdir,
         tree,
-        nsnps=10000,
+        nsnps=20000,
         nedges=1,
-        ntests=1,
+        ntests=10,
         nreps=1,
-        Ne=10000,
+        Ne_min=10000,
+        Ne_max=100000,
+        Ne_fixed=False,
         admix_prop_min=0.05,
         admix_prop_max=0.50,
         admix_edge_min=0.5,
@@ -121,10 +136,11 @@ class Database:
         self._nthreads = nthreads
 
         # store params
-        self.Ne = Ne
         self.tree = (
             toytree.tree(tree) if isinstance(tree, str) else tree.copy())
-        self._get_Ne()
+        self.Ne_min = Ne_min
+        self.Ne_max = Ne_max
+        self.Ne_fixed = Ne_fixed
         self.inodes = self.tree.nnodes - self.tree.ntips
         self.node_slider = node_slider
 
@@ -307,6 +323,20 @@ class Database:
         idx = 0
         for test in range(self.ntests):
 
+            # sample Ne values from range
+            if self.Ne_fixed:
+                popsizes = self.random.randint(
+                    self.Ne_min,
+                    self.Ne_max,
+                    1,
+                ).repeat(self.tree.nnodes)
+            else:
+                popsizes = self.random.randint(
+                    self.Ne_min,
+                    self.Ne_max,
+                    self.tree.nnodes,
+                ).repeat(self.inodes)
+
             # wiggle node heights
             if self.node_slider:
                 slide_seed = self.random.randint(0, 1e12)
@@ -316,10 +346,9 @@ class Database:
 
             # store internal heights and Nes to array
             heights = ntree.get_node_values("height", 1, 1).astype(int)
-            popsize = ntree.get_node_values("Ne", 1, 1).astype(int)
             mask = heights > 0
             heights = heights[mask]
-            popsize = popsize[mask]
+            popsizes = popsizes[mask]
 
             # get n admixture edges (on this slide tree)
             aedges = get_all_admix_edges(ntree, 0.5, 0.5, self.exclude_sisters)
@@ -339,7 +368,7 @@ class Database:
                 # simulation replicates
                 for rep in range(self.nreps):
                     arr_h[idx] = heights
-                    arr_n[idx] = popsize
+                    arr_n[idx] = popsizes
                     arr_a[idx] = (edgetup[0], edgetup[1], migprop)
                     arr_s[idx] = slide_seed
 
