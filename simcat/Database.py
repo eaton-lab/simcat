@@ -16,7 +16,6 @@ import itertools as itt
 import toytree
 import numpy as np
 
-# from .Simulator import Simulator
 from .parallel import Parallel
 from .Simulator import IPCoalWrapper
 from .utils import get_all_admix_edges, SimcatError, Progress
@@ -46,6 +45,19 @@ class Database:
         unless the argument 'edge_function' is used, in which case edge lengths
         are drawn from a distribution.
 
+    Ne_min: int (default=1e4)
+        Effective population size (Ne) minimum value sampled randomly 
+        across ntests.
+
+    Ne_max: int (default=1e5)
+        Effective population size (Ne) maximum value sampled randomly 
+        across ntests.
+
+    Ne_fixed: bool (default=True)
+        If True then a single Ne value is sampled and applied to all edges 
+        of the tree in each simulation. Else different values are randomly 
+        sampled for all edges of the tree in the selected range for ntests.
+
     nedges: int (default=0)
         The number of admixture edges to add to each tree at a time. All edges
         will be drawn on the tree that can connect any branches which overlap
@@ -54,7 +66,7 @@ class Database:
         all possible events will be tested.
         * Each nedge increases nvalues by nevents * ntests * nreps.
 
-    ntests: int (default=100)
+    ntests: int (default=10)
         The number of parameters to draw for each admixture_event described
         by an edge but sampling different durations, magnitudes, and mutation
         rates (theta). For example, (2, 1, None, None, None) could draw
@@ -62,13 +74,13 @@ class Database:
         and (2, 1, 0.2, 0.4, 0.02) and theta=0.2 in another.
         * Each ntest increases nvalues by nreps.
 
-    nreps: int (default=10)
+    nreps: int (default=1)
         The number of replicate simulations to run per admixture scenario,
         sampled tree, and parameter set (nevent, ntree, ntest). Replicate
         simulations make identical calls to msprime but get variable result
         matrices due to variability in the coalescent process.
 
-    nsnps: int (default=1000)
+    nsnps: int (default=20000)
         The number of SNPs in each simulation that are used to build the
         16x16 arrays of phylogenetic invariants for each quartet sample.
 
@@ -83,11 +95,13 @@ class Database:
         name,
         workdir,
         tree,
-        nsnps=10000,
+        nsnps=20000,
         nedges=1,
-        ntests=1,
+        ntests=10,
         nreps=1,
-        Ne=10000,
+        Ne_min=10000,
+        Ne_max=100000,
+        Ne_fixed=False,
         admix_prop_min=0.05,
         admix_prop_max=0.50,
         admix_edge_min=0.5,
@@ -97,6 +111,8 @@ class Database:
         seed=None,
         force=False,
         quiet=False,
+        random_sampling=True,
+        nthreads=2,
         ):
 
         # init random seed generator
@@ -116,14 +132,17 @@ class Database:
             os.path.join(workdir, "{}.counts.h5".format(self.name)))
         self.checkpoint = 0
         self._quiet = quiet
-        self.node_slider = node_slider
+        self._random_sampling = random_sampling
+        self._nthreads = nthreads
 
         # store params
-        self.Ne = Ne
         self.tree = (
             toytree.tree(tree) if isinstance(tree, str) else tree.copy())
-        self._get_Ne()
+        self.Ne_min = Ne_min
+        self.Ne_max = Ne_max
+        self.Ne_fixed = Ne_fixed
         self.inodes = self.tree.nnodes - self.tree.ntips
+        self.node_slider = node_slider
 
         self.admix_edge_min = admix_edge_min
         self.admix_edge_max = admix_edge_max
@@ -243,30 +262,26 @@ class Database:
             if force:
                 i5 = h5py.File(self.labels, mode='w')
                 o5 = h5py.File(self.counts, mode='w')
-            # else:
-                # self.i5 = h5py.File(self.labels, mode='a')
-                # self.o5 = h5py.File(self.counts, mode='a')
+            else:
+                return 
+                # i5 = h5py.File(self.labels, mode='a')
+                # o5 = h5py.File(self.counts, mode='a')
 
         # store some database attribute info
         i5.attrs["tree"] = self.tree.write()
         o5.attrs["tree"] = self.tree.write()
         i5.attrs["nsnps"] = self.nsnps
         o5.attrs["nsnps"] = self.nsnps
+        i5.attrs["nquarts"] = self.nquarts
+        o5.attrs["nquarts"] = self.nquarts
 
         # store data in separate dsets and with matrix shape so that in the 
         # analysis we can best take advantage of different combinations of the
         # data and its structure.
         smat = (self.nstored_labels, self.nquarts, 16, 16)
-        svdu = (self.nstored_labels, self.nquarts, 16, 16)
-        svdv = (self.nstored_labels, self.nquarts, 16, 16)
-        svds = (self.nstored_labels, self.nquarts, 16)
-        mvar = (self.nstored_labels, 16, 16)
+
         # countsize = (self.nstored_labels, snps + svdu + svdv + svds + mvar)
-        o5.create_dataset(name="counts", shape=smat, dtype=np.int64, gzip=True)
-        o5.create_dataset(name="svdu", shape=svdu, dtype=np.float64)
-        o5.create_dataset(name="svdv", shape=svdv, dtype=np.float64)
-        o5.create_dataset(name="svds", shape=svds, dtype=np.float64)
-        o5.create_dataset(name="mvar", shape=mvar, dtype=np.float64)        
+        o5.create_dataset(name="counts", shape=smat, dtype=np.int64, compression="gzip")
 
         # array of node heights,Nes in traverse order (-tips)
         lnodes = (self.nstored_labels, self.inodes)
@@ -288,6 +303,14 @@ class Database:
         """
         Fill the h5 database with all labels.
         """
+        # sample admixture props randomly or uniformly?
+        if not self._random_sampling:
+            migsamps = np.linspace(
+                self.admix_prop_min, self.admix_prop_max, self.ntests)
+        else:
+            migsamps = self.random.uniform(
+                self.admix_prop_min, self.admix_prop_max, self.ntests)
+
         # arrays to write in chunks to the h5 array
         chunksize = 10000
         arr_h = np.zeros((chunksize, self.inodes), dtype=np.int)
@@ -300,6 +323,20 @@ class Database:
         idx = 0
         for test in range(self.ntests):
 
+            # sample Ne values from range
+            if self.Ne_fixed:
+                popsizes = self.random.randint(
+                    self.Ne_min,
+                    self.Ne_max,
+                    1,
+                ).repeat(self.tree.nnodes)
+            else:
+                popsizes = self.random.randint(
+                    self.Ne_min,
+                    self.Ne_max,
+                    self.tree.nnodes,
+                ).repeat(self.inodes)
+
             # wiggle node heights
             if self.node_slider:
                 slide_seed = self.random.randint(0, 1e12)
@@ -309,10 +346,9 @@ class Database:
 
             # store internal heights and Nes to array
             heights = ntree.get_node_values("height", 1, 1).astype(int)
-            popsize = ntree.get_node_values("Ne", 1, 1).astype(int)
             mask = heights > 0
             heights = heights[mask]
-            popsize = popsize[mask]
+            popsizes = popsizes[mask]
 
             # get n admixture edges (on this slide tree)
             aedges = get_all_admix_edges(ntree, 0.5, 0.5, self.exclude_sisters)
@@ -324,8 +360,7 @@ class Database:
                 aedges = np.array(list(aedges))[aes]
 
             # sample admix proportion
-            migprop = self.random.uniform(
-                self.admix_prop_min, self.admix_prop_max, 1)
+            migprop = migsamps[test]
 
             # iterate over each placement of the edges
             for edgetup in aedges:
@@ -333,8 +368,8 @@ class Database:
                 # simulation replicates
                 for rep in range(self.nreps):
                     arr_h[idx] = heights
-                    arr_n[idx] = popsize
-                    arr_a[idx] = np.concatenate([edgetup, migprop])
+                    arr_n[idx] = popsizes
+                    arr_a[idx] = (edgetup[0], edgetup[1], migprop)
                     arr_s[idx] = slide_seed
 
                     # advance counter
@@ -362,14 +397,15 @@ class Database:
         # if outfile exists and not force then find checkpoint
         # ...
 
-        # load-balancer for single-threaded execution jobs
+        # load-balancer for distributed parallel jobs
         lbview = ipyclient.load_balanced_view()
 
         # set chunksize based on ncores and stored_labels
-        ncores = len(ipyclient)
-        self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
-        self.chunksize = min(500, self.chunksize)
-        self.chunksize = max(4, self.chunksize)
+        # ncores = len(ipyclient)
+        # self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
+        # self.chunksize = min(12, self.chunksize)
+        # self.chunksize = max(4, self.chunksize)
+        self.chunksize = 4
 
         # an iterator to return chunked slices of jobs
         jobs = range(self.checkpoint, self.nstored_labels, self.chunksize)
@@ -380,7 +416,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_labels, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1)
+                args = (self.labels, slice0, slice1, self._nthreads, True)
                 rasyncs[slice0] = lbview.apply(IPCoalWrapper, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
@@ -407,10 +443,6 @@ class Database:
                         # object returns, pull out results
                         res = rasync.get()
                         io5["counts"][job:job + self.chunksize, :] = res.counts
-                        io5["svdu"][job:job + self.chunksize, :] = res.svdu
-                        io5["svds"][job:job + self.chunksize, :] = res.svds
-                        io5["svdv"][job:job + self.chunksize, :] = res.svdv
-                        io5["mvar"][job:job + self.chunksize, :] = res.mvar
 
                         # free up memory from job
                         del rasyncs[job]
@@ -431,7 +463,7 @@ class Database:
             progress.widget.close()
             print(
                 "completed {} simulations in {}."
-                .format(njobs, progress.elapsed)
+                .format(self.nstored_labels, progress.elapsed)
             )
 
         finally:
@@ -451,10 +483,6 @@ class Database:
             A connected ipyclient object. If ipcluster instance is
             not running on the default profile then ...
         """
-        # Fill all params into the database (this inits the Model objects
-        # which call ._get_test_values() to generate all simulation scenarios.
-        # self.init_databases(force=force)
-
         # distribute filling jobs in parallel
         pool = Parallel(
             tool=self,
@@ -465,69 +493,3 @@ class Database:
             quiet=self._quiet,
             )
         pool.wrap_run()
-
-
-
-
-# def fill_node_slides(self):
-#     """
-#     Perform node sliding to fill node heights and Nes to database.
-#     """ 
-
-#     # make copy of tree
-#     itree = self.tree.copy()
-#     # for node in itree.treenode.traverse():
-#     #    node.name = node.idx
-
-#     # store node heights and Nes
-#     idx = 0
-#     # for now just a constant Ne...
-#     Nes = np.repeat(self.Ne, itree.nnodes)
-#     for node in itree.treenode.traverse():
-#         node.add_feature('Ne', Nes[idx])
-#         idx += 1
-#     if not self.node_slider:
-#         all_trees = np.repeat(itree,
-#                               self.ntests)
-
-#     else:
-#         all_trees = np.array(
-#             [itree.mod.node_slider() for i in range(self.ntests)]
-#         )
-
-#     # note that this could also be a tree generator...
-#     eidx = 0
-#     for unique_tree in all_trees:  
-
-#         # get_all_admix_edges for each tree... 
-#         # because different trees will have different edges
-#         admixedges = get_all_admix_edges(
-#             unique_tree,
-#             0.0,
-#             1.0,
-#             self.exclude_sisters,
-#         )
-#         events = itt.combinations(admixedges.keys(), self.nedges)
-
-#         # tuple of admixture_edges as tuples with ranges to sample.
-#         for evt in events:
-#             for rep in range(self.nreps):
-#                 for node in unique_tree.treenode.traverse():
-#                     self.i5['node_heights'][eidx, node.idx] = node.height
-#                     self.i5['node_Nes'][eidx, node.idx] = node.Ne
-#                 admixlist = [
-#                     (
-#                         i[0],
-#                         i[1],
-#                         np.random.uniform(self.admix_edge_min,
-#                                           self.admix_edge_max),
-#                         np.random.uniform(self.admix_prop_min,
-#                                           self.admix_prop_max),
-#                     )
-#                     for i in evt
-#                 ]
-#                 admix_arg = str(admixlist).encode('ascii')
-#                 # in case we want to include an option for no admixture
-#                 self.i5['admixed'][eidx] = True
-#                 self.i5['admixture_args'][eidx] = admix_arg
-#                 eidx += 1

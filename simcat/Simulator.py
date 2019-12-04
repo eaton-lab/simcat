@@ -9,12 +9,17 @@ from __future__ import print_function
 from builtins import range
 
 import h5py
-import itertools
-
 import ipcoal
 import toytree
 import numpy as np
 from .utils import get_snps_count_matrix
+
+# py3 only
+try:
+    from concurrent.futures import ThreadPoolExecutor
+    PY3 = True
+except ImportError:
+    PY3 = False
 
 
 
@@ -24,7 +29,7 @@ class IPCoalWrapper:
     building the msprime simulations calls, and then calling .run() to fill
     count matrices and return them.
     """
-    def __init__(self, database_file, slice0, slice1, run=True):
+    def __init__(self, database_file, slice0, slice1, nthreads=2, run=True):
 
         # location of data
         self.database = database_file
@@ -37,13 +42,16 @@ class IPCoalWrapper:
         # fill the vector of simulated data for .counts
         if run:
             # infer count matrices on slice of data    
-            self.run()
+            if (PY3 and nthreads):
+                self.run_threads(nthreads)
+            else:
+                self.run()
 
             # normalize counts while in stacked format?
             pass
 
             # get more features from the counts and flatten to .vector
-            self.add_features()
+            # self.add_features()
 
 
 
@@ -74,6 +82,9 @@ class IPCoalWrapper:
         #     mvar.reshape(mvar.shape[0], -1),         # variances
         # ], axis=1)
 
+        # compute ABBA, BABA and Hils statistic ratios...
+        # ...
+
 
 
     def load_slice(self):
@@ -94,11 +105,64 @@ class IPCoalWrapper:
             self.ntips = len(self.tree)
 
             # storage SNPs in STACKED matrix so we can compute stacked stats
-            self.nquarts = sum(
-                1 for i in itertools.combinations(range(self.ntips), 4))
+            self.nquarts = io5.attrs["nquarts"]
             self.nvalues = self.slice1 - self.slice0
             self.counts = np.zeros(
                 (self.nvalues, self.nquarts, 16, 16), dtype=np.int64) 
+
+
+
+    def run_threads(self, nthreads):
+        """
+        Multithread it
+        """
+        with ThreadPoolExecutor(max_workers=nthreads) as executor:
+
+            # run simulations
+            for idx in range(self.nvalues):
+
+                # modify the tree if ...
+                tree = self.tree.mod.node_slider(
+                    prop=0.25, seed=self.slide_seeds[idx])
+
+                # set Nes default and override on internal nodes with stored vals
+                tree = tree.set_node_values("Ne", default=1e5)
+                nes = iter(self.node_Nes[idx])
+                for node in tree.treenode.traverse():
+                    if not node.is_leaf():
+                        node.Ne = next(nes)
+
+                # get admixture tuples (only supports 1 edge like this right now)
+                admix = (
+                    int(self.admixture[idx, 0]),
+                    int(self.admixture[idx, 1]),
+                    0.5,
+                    self.admixture[idx, 2],
+                )
+
+                # build ipcoal Model object
+                model = ipcoal.Model(
+                    tree=tree,
+                    admixture_edges=[admix],
+                    Ne=None,
+                    )
+
+                # start threaded jobs to simulate genealogies and snps
+                schunks = split_snps_to_chunks(self.nsnps, nthreads)
+                res = []
+                for chunk in schunks:
+                    rasync = executor.submit(
+                        thread_sim_snps, *(model, chunk)
+                    )
+                    res.append(rasync)
+
+                # pull in results and reformat
+                resms = [i.result() for i in res]
+                matrix = np.concatenate(resms, axis=1)
+                mat = get_snps_count_matrix(tree, matrix)
+
+                # store results
+                self.counts[idx] = mat
 
 
 
@@ -120,7 +184,7 @@ class IPCoalWrapper:
                 if not node.is_leaf():
                     node.Ne = next(nes)
 
-            # get admixture tuples (only supports 1 egge like this right now)
+            # get admixture tuples (only supports 1 edge like this right now)
             admix = (
                 int(self.admixture[idx, 0]),
                 int(self.admixture[idx, 1]),
@@ -143,3 +207,21 @@ class IPCoalWrapper:
 
             # store results
             self.counts[idx] = mat
+
+
+
+def thread_sim_snps(model, nsnps):
+    "call sim_snps on a subset of nsnps for threaded mode."
+    model.sim_snps(nsnps)
+    return model.seqs
+
+
+def split_snps_to_chunks(nsnps, nchunks):
+    "split nsnps into int chunks for threaded jobs summing to nsnps."
+    out = []
+    for i in range(nchunks):
+        if i == nchunks - 1:
+            out.append((nsnps // nchunks) + (nsnps % nchunks))
+        else:
+            out.append(nsnps // nchunks)
+    return out
