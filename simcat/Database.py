@@ -12,7 +12,6 @@ import os
 import h5py
 import time
 import itertools as itt
-
 import toytree
 import numpy as np
 
@@ -95,10 +94,11 @@ class Database:
         name,
         workdir,
         tree,
-        nsnps=20000,
-        nedges=1,
-        ntests=10,
-        nreps=1,
+        n_admix_edges=1,
+        n_sampled_snps=20000,
+        n_sampled_admix_prop=11,
+        n_sampled_Ne=11,
+        n_sampled_reps=1,
         Ne_min=10000,
         Ne_max=100000,
         Ne_fixed=False,
@@ -151,10 +151,11 @@ class Database:
         self.exclude_sisters = exclude_sisters
 
         # database label combinations
-        self.nedges = nedges
-        self.ntests = ntests
-        self.nreps = nreps
-        self.nsnps = nsnps
+        self.nedges = n_admix_edges
+        self.naprops = n_sampled_admix_prop
+        self.nreps = n_sampled_reps
+        self.nnes = n_sampled_Ne
+        self.nsnps = n_sampled_snps
         self.nquarts = sum(1 for i in itt.combinations(range(tree.ntips), 4))
 
         # get number of places to put admix edges on THIS tree. If node slider
@@ -167,7 +168,8 @@ class Database:
         admixedges = get_all_admix_edges(*args)
         self.aedges = list(itt.combinations(admixedges, self.nedges))
         self.naedges = len(self.aedges)
-        self.nstored_labels = self.naedges * self.ntests * self.nreps
+        self.nstored_labels = (
+            self.naedges * self.naprops * self.nreps * self.nnes)
 
         # create or clear the database for writing
         self.init_databases(force)
@@ -215,34 +217,6 @@ class Database:
 
         with h5py.File(self.counts) as io5:
             print('counts', io5["counts"].shape)
-
-
-
-    def _get_Ne(self):
-        """
-        If Ne node attrs are present in the input tree these override the 
-        global Ne argument which is set to all other nodes. Every node should
-        have an Ne value at the end of this. Sets node.Ne attrs and sets max
-        value to self.Ne.
-        """
-        # get map of {nidx: node}
-        ndict = self.tree.get_node_dict(True, True)
-
-        # set user entered arg (self.Ne) to any node without a Ne attr
-        for nidx, node in ndict.items():
-            if not hasattr(node, "Ne"):
-                setattr(node, "Ne", int(self.Ne))
-            else:
-                setattr(node, "Ne", int(node.Ne))
-
-        # check that all nodes have .Ne
-        nes = self.tree.get_node_values("Ne", True, True)
-        if not all(nes):
-            raise SimcatError(
-                "Ne must be provided as an argument or tree node attribute.")
-
-        # set to the max value        
-        self.Ne = max(nes)
 
 
 
@@ -306,10 +280,15 @@ class Database:
         # sample admixture props randomly or uniformly?
         if not self._random_sampling:
             migsamps = np.linspace(
-                self.admix_prop_min, self.admix_prop_max, self.ntests)
+                self.admix_prop_min, self.admix_prop_max, self.naprops)
+            popsizes = np.linspace(
+                self.Ne_min, self.Ne_max, self.nnes)
         else:
-            migsamps = self.random.uniform(
-                self.admix_prop_min, self.admix_prop_max, self.ntests)
+            n = self.tree.nnodes
+            migsamps = np.random.uniform(
+                self.admix_prop_min, self.admix_prop_max, 1).repeat(n)
+            popsizes = np.random.uniform(
+                self.Ne_min, self.Ne_max, 1).repeat(n)
 
         # arrays to write in chunks to the h5 array
         chunksize = 10000
@@ -321,21 +300,7 @@ class Database:
         # test is a sampled nodeslide (heights, edges), migrate, migprop, Nes
         wdx = 0
         idx = 0
-        for test in range(self.ntests):
-
-            # sample Ne values from range
-            if self.Ne_fixed:
-                popsizes = self.random.randint(
-                    self.Ne_min,
-                    self.Ne_max,
-                    1,
-                ).repeat(self.tree.nnodes)
-            else:
-                popsizes = self.random.randint(
-                    self.Ne_min,
-                    self.Ne_max,
-                    self.tree.nnodes,
-                ).repeat(self.inodes)
+        for aprop in migsamps:
 
             # wiggle node heights
             if self.node_slider:
@@ -347,8 +312,8 @@ class Database:
             # store internal heights and Nes to array
             heights = ntree.get_node_values("height", 1, 1).astype(int)
             mask = heights > 0
-            heights = heights[mask]
-            popsizes = popsizes[mask]
+            iheights = heights[mask]
+            # ipops = popsizes[mask]
 
             # get n admixture edges (on this slide tree)
             aedges = get_all_admix_edges(ntree, 0.5, 0.5, self.exclude_sisters)
@@ -359,34 +324,34 @@ class Database:
                 aes = np.random.choice(rgs, self.naedges)
                 aedges = np.array(list(aedges))[aes]
 
-            # sample admix proportion
-            migprop = migsamps[test]
-
             # iterate over each placement of the edges
             for edgetup in aedges:
 
-                # simulation replicates
-                for rep in range(self.nreps):
-                    arr_h[idx] = heights
-                    arr_n[idx] = popsizes
-                    arr_a[idx] = (edgetup[0], edgetup[1], migprop)
-                    arr_s[idx] = slide_seed
+                # Ne applied to this edge
+                for ne in popsizes:
 
-                    # advance counter
-                    idx += 1
+                    # simulation replicates
+                    for rep in range(self.nreps):
+                        arr_h[idx] = iheights
+                        arr_n[idx] = ne
+                        arr_a[idx] = (edgetup[0], edgetup[1], aprop)
+                        arr_s[idx] = slide_seed
 
-                    # reset arrs if bigger than chunksize
-                    if (idx == chunksize) or (idx == self.nstored_labels):
-                        with h5py.File(self.labels, 'a') as i5:
-                            i5["node_heights"][wdx:wdx + idx] = arr_h[:idx]
-                            i5["node_Nes"][wdx:wdx + idx] = arr_n[:idx]
-                            i5["admixture"][wdx:wdx + idx] = arr_a[:idx]
-                            i5["slide_seeds"][wdx:wdx + idx] = arr_s[:idx]
-                            arr_h[:] = 0
-                            arr_n[:] = 0
-                            arr_a[:] = 0
-                            wdx += idx
-                            idx = 0
+                        # advance counter
+                        idx += 1
+
+                        # reset arrs if bigger than chunksize
+                        if (idx == chunksize) or (idx == self.nstored_labels):
+                            with h5py.File(self.labels, 'a') as i5:
+                                i5["node_heights"][wdx:wdx + idx] = arr_h[:idx]
+                                i5["node_Nes"][wdx:wdx + idx] = arr_n[:idx]
+                                i5["admixture"][wdx:wdx + idx] = arr_a[:idx]
+                                i5["slide_seeds"][wdx:wdx + idx] = arr_s[:idx]
+                                arr_h[:] = 0
+                                arr_n[:] = 0
+                                arr_a[:] = 0
+                                wdx += idx
+                                idx = 0
 
 
 
@@ -401,10 +366,10 @@ class Database:
         lbview = ipyclient.load_balanced_view()
 
         # set chunksize based on ncores and stored_labels
-        # ncores = len(ipyclient)
-        # self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
-        # self.chunksize = min(12, self.chunksize)
-        # self.chunksize = max(4, self.chunksize)
+        ncores = len(ipyclient)
+        self.chunksize = int(np.ceil(self.nstored_labels / (ncores * 8)))
+        self.chunksize = min(12, self.chunksize)
+        self.chunksize = max(4, self.chunksize)
         self.chunksize = 4
 
         # an iterator to return chunked slices of jobs
