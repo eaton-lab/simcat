@@ -47,45 +47,6 @@ class IPCoalWrapper:
             else:
                 self.run()
 
-            # normalize counts while in stacked format?
-            pass
-
-            # get more features from the counts and flatten to .vector
-            # self.add_features()
-
-
-
-    def add_features(self):
-        """
-        compute additional features that capture the stacked matrix structure
-        of the count data before flattening it into a vector for ML.
-        """
-        # compute SVD features for each stack
-        # (10, 15, 16, 16) -> (10, 15, 16, 16), (10, 15, 16), (10, 15, 16, 16)
-        u, s, v = np.linalg.svd(self.counts)
-        self.svdu = u
-        self.svds = s
-        self.svdv = v
-
-        # compute variance (10, 15, 16, 16) -> (10, 16, 16)
-        self.mvar = self.counts.var(axis=1)
-
-        # reshape to ntests flattened (10, 15, 16, 16) -> (10, 3840)
-        # vectorsnps = self.counts.reshape(self.counts.shape[0], -1)
-
-        # return with stored vector results (10, ...)
-        # self.vector = np.concatenate([
-        #     vectorsnps,                              # snp counts 
-        #     u.reshape(u.shape[0], -1),               # left singulars
-        #     s.reshape(s.shape[0], -1),               # singulars 
-        #     vh.reshape(vh.shape[0], -1),             # right singulars
-        #     mvar.reshape(mvar.shape[0], -1),         # variances
-        # ], axis=1)
-
-        # compute ABBA, BABA and Hils statistic ratios...
-        # ...
-
-
 
     def load_slice(self):
         """
@@ -202,7 +163,7 @@ class IPCoalWrapper:
             # simulate genealogies and snps
             model.sim_snps(self.nsnps)
 
-            # TODO: ipcoal converter not fastest possible
+            # stack to mat
             mat = get_snps_count_matrix(tree, model.seqs)
 
             # store results
