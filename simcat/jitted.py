@@ -6,6 +6,7 @@ import numpy as np
 from numba import njit
 
 
+@njit
 def count_matrix_int(quartsnps):
     """
     return a 16x16 matrix of site counts from snparr
