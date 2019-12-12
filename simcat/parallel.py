@@ -174,7 +174,7 @@ class Parallel(object):
                         break
 
                 # If MPI and not all found, break if no more found in 3 secs
-                if self.tool.ipcluster["engines"] == "MPI":
+                elif self.tool.ipcluster["engines"] == "MPI":
                     # are any cores found yet? do long wait.
                     if ncores:
                         time.sleep(1)
