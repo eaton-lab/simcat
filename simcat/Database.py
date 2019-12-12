@@ -381,7 +381,7 @@ class Database:
         for slice0 in jobs:
             slice1 = min(self.nstored_labels, slice0 + self.chunksize)
             if slice1 > slice0:
-                args = (self.labels, slice0, slice1, self._nthreads, True)
+                args = (self.labels, slice0, slice1, True)
                 rasyncs[slice0] = lbview.apply(IPCoalWrapper, *args)
 
         # catch results as they return and enter into H5 to keep mem low.
