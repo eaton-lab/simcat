@@ -14,11 +14,6 @@ import toytree
 import numpy as np
 from .utils import get_snps_count_matrix
 
-# set the threading layer before any parallel target compilation
-from numba import config
-config.THREADING_LAYER = 'forksafe'
-
-
 
 
 class IPCoalWrapper:
