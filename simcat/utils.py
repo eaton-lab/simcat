@@ -208,16 +208,15 @@ def get_snps_count_matrix(tree, seqs):
     Compiles SNP data into a nquartets x 16 x 16 count matrix with the order
     of quartets determined by the shape of the tree.
     """
-    # get nquartets without requiring scipy (slower for biiig data tho)
-    nquarts = sum(1 for i in itertools.combinations(range(tree.ntips), 4))
+    # get all quartets for this size tree
+    quarts = list(itertools.combinations(range(tree.ntips), 4))
 
     # shape of the arr (count matrix)
-    arr = np.zeros((nquarts, 16, 16), dtype=np.int64)
+    arr = np.zeros((len(quarts), 16, 16), dtype=np.int64)
 
     # iterator for quartets, e.g., (0, 1, 2, 3), (0, 1, 2, 4)...
     quartidx = 0
-    qiter = itertools.combinations(range(tree.ntips), 4)
-    for currquart in qiter:
+    for currquart in quarts:
         # cols indices match tip labels b/c we named tips node.idx
         quartsnps = seqs[currquart, :]
         # save as stacked matrices

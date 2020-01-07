@@ -31,7 +31,7 @@ class Parallel(object):
     Connect or launch ipcluster and wrap jobs running on Client engines so 
     that engines can be interrupted or killed with a pleasant cleanup.
     """
-    def __init__(self, tool, rkwargs=None, ipyclient=None, show_cluster=True, quiet = False, auto=False):
+    def __init__(self, tool, rkwargs=None, ipyclient=None, show_cluster=True, quiet=False, auto=False):
 
         # if no kwargs then empty dict
         if rkwargs is None:
@@ -174,7 +174,7 @@ class Parallel(object):
                         break
 
                 # If MPI and not all found, break if no more found in 3 secs
-                if self.tool.ipcluster["engines"] == "MPI":
+                elif self.tool.ipcluster["engines"] == "MPI":
                     # are any cores found yet? do long wait.
                     if ncores:
                         time.sleep(1)
