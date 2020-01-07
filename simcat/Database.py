@@ -283,12 +283,13 @@ class Database:
                 self.admix_prop_min, self.admix_prop_max, self.naprops)
             popsizes = np.linspace(
                 self.Ne_min, self.Ne_max, self.nnes)
+
+        # otherwise, we probably to grid random admix props and random Nes
         else:
-            n = self.tree.nnodes
             migsamps = np.random.uniform(
-                self.admix_prop_min, self.admix_prop_max, 1).repeat(n)
+                self.admix_prop_min, self.admix_prop_max, self.naprops)
             popsizes = np.random.uniform(
-                self.Ne_min, self.Ne_max, 1).repeat(n)
+                self.Ne_min, self.Ne_max, self.nnes)
 
         # arrays to write in chunks to the h5 array
         chunksize = 10000
