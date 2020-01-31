@@ -226,8 +226,8 @@ class Analysis(object):
 
         # exclude sisters
         if self.mask_sisters:
-            self.df.loc[self.df.sisters, "label"] = "NaN"
-            self.df.loc[self.df.sisters, "ulabel"] = "NaN"
+            self.df.loc[self.df.sisters.eq(1), "label"] = "NaN"
+            self.df.loc[self.df.sisters.eq(1), "ulabel"] = "NaN"
 
 
 
