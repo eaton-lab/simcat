@@ -336,7 +336,8 @@ class Database:
                         arr_h[idx] = iheights
                         arr_n[idx] = ne
                         arr_a[idx] = (edgetup[0], edgetup[1], aprop)
-                        arr_s[idx] = slide_seed
+                        if self.node_slider:
+                            arr_s[idx] = slide_seed
 
                         # advance counter
                         idx += 1
