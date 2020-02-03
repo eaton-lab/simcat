@@ -83,6 +83,13 @@ class Database:
         The number of SNPs in each simulation that are used to build the
         16x16 arrays of phylogenetic invariants for each quartet sample.
 
+    max_rows_per_test: int (default=None)
+        The maximum number of rows to include for each tree simulated on. If
+        this value is smaller than the number of possible admixture edges, then
+        the admixture events simulated will be randomly chosen for the list of
+        possible events. If max_rows_per_test=None, then all of the possible
+        admixture edges will be simulated on.
+
     seed: int (default=None)
         Set the seed of the random number generator
 
@@ -109,6 +116,7 @@ class Database:
         exclude_sisters=False,
         node_slider=True,
         seed=None,
+        max_rows_per_test=None,
         force=False,
         quiet=False,
         random_sampling=True,
@@ -143,6 +151,7 @@ class Database:
         self.Ne_fixed = Ne_fixed
         self.inodes = self.tree.nnodes - self.tree.ntips
         self.node_slider = node_slider
+        self.max_rows_per_test = max_rows_per_test
 
         self.admix_edge_min = admix_edge_min
         self.admix_edge_max = admix_edge_max
@@ -167,7 +176,7 @@ class Database:
         args = (self.tree, 0.5, 0.5, self.exclude_sisters)
         admixedges = get_all_admix_edges(*args)
         self.aedges = list(itt.combinations(admixedges, self.nedges))
-        self.naedges = len(self.aedges)
+        self.naedges = min(self.max_rows_per_test, len(self.aedges))
         self.nstored_labels = (
             self.naedges * self.naprops * self.nreps * self.nnes)
 
@@ -323,6 +332,12 @@ class Database:
             if len(aedges) != self.naedges:
                 rgs = range(len(aedges))
                 aes = np.random.choice(rgs, self.naedges)
+                aedges = np.array(list(aedges))[aes]
+
+            # adjust for maximum rows desired:
+            if len(aedges) > self.max_rows_per_test:
+                rgs = range(len(aedges))
+                aes = np.random.choice(rgs, self.max_rows_per_test)
                 aedges = np.array(list(aedges))[aes]
 
             # iterate over each placement of the edges
