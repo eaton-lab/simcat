@@ -151,7 +151,11 @@ class Database:
         self.Ne_fixed = Ne_fixed
         self.inodes = self.tree.nnodes - self.tree.ntips
         self.node_slider = node_slider
-        self.max_rows_per_test = max_rows_per_test
+        
+        if not max_rows_per_test:
+            self.max_rows_per_test = np.inf
+        else:
+            self.max_rows_per_test = max_rows_per_test
 
         self.admix_edge_min = admix_edge_min
         self.admix_edge_max = admix_edge_max
