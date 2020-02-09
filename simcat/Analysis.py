@@ -151,13 +151,11 @@ class Analysis(object):
             # load the tree that was used in the simulations and the data
             self.tree = toytree.tree(io5.attrs["tree"])
             self.counts = io5["counts"][:]
-            self.svds = io5["svds"][:]
 
             # [1] rescale to make counts proportional across ALL sims.
             # this seems to work much better than [2].
             if self.scale == 1:
                 self.counts = self.counts / self.counts.max()
-                self.svds = self.svds / self.svds.max()
 
             # [2] rescale by make counts proportional across sims on same tree.
             if self.scale == 2:
@@ -228,8 +226,8 @@ class Analysis(object):
 
         # exclude sisters
         if self.mask_sisters:
-            self.df.loc[self.df.sisters, "label"] = "NaN"
-            self.df.loc[self.df.sisters, "ulabel"] = "NaN"
+            self.df.loc[self.df.sisters.eq(1), "label"] = "NaN"
+            self.df.loc[self.df.sisters.eq(1), "ulabel"] = "NaN"
 
 
 

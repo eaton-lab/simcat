@@ -83,6 +83,13 @@ class Database:
         The number of SNPs in each simulation that are used to build the
         16x16 arrays of phylogenetic invariants for each quartet sample.
 
+    max_rows_per_test: int (default=None)
+        The maximum number of rows to include for each tree simulated on. If
+        this value is smaller than the number of possible admixture edges, then
+        the admixture events simulated will be randomly chosen for the list of
+        possible events. If max_rows_per_test=None, then all of the possible
+        admixture edges will be simulated on.
+
     seed: int (default=None)
         Set the seed of the random number generator
 
@@ -109,6 +116,7 @@ class Database:
         exclude_sisters=False,
         node_slider=True,
         seed=None,
+        max_rows_per_test=None,
         force=False,
         quiet=False,
         random_sampling=True,
@@ -143,6 +151,11 @@ class Database:
         self.Ne_fixed = Ne_fixed
         self.inodes = self.tree.nnodes - self.tree.ntips
         self.node_slider = node_slider
+        
+        if not max_rows_per_test:
+            self.max_rows_per_test = np.inf
+        else:
+            self.max_rows_per_test = max_rows_per_test
 
         self.admix_edge_min = admix_edge_min
         self.admix_edge_max = admix_edge_max
@@ -167,7 +180,7 @@ class Database:
         args = (self.tree, 0.5, 0.5, self.exclude_sisters)
         admixedges = get_all_admix_edges(*args)
         self.aedges = list(itt.combinations(admixedges, self.nedges))
-        self.naedges = len(self.aedges)
+        self.naedges = min(self.max_rows_per_test, len(self.aedges))
         self.nstored_labels = (
             self.naedges * self.naprops * self.nreps * self.nnes)
 
@@ -283,12 +296,13 @@ class Database:
                 self.admix_prop_min, self.admix_prop_max, self.naprops)
             popsizes = np.linspace(
                 self.Ne_min, self.Ne_max, self.nnes)
+
+        # otherwise, we probably to grid random admix props and random Nes
         else:
-            n = self.tree.nnodes
             migsamps = np.random.uniform(
-                self.admix_prop_min, self.admix_prop_max, 1).repeat(n)
+                self.admix_prop_min, self.admix_prop_max, self.naprops)
             popsizes = np.random.uniform(
-                self.Ne_min, self.Ne_max, 1).repeat(n)
+                self.Ne_min, self.Ne_max, self.nnes)
 
         # arrays to write in chunks to the h5 array
         chunksize = 10000
@@ -324,6 +338,12 @@ class Database:
                 aes = np.random.choice(rgs, self.naedges)
                 aedges = np.array(list(aedges))[aes]
 
+            # adjust for maximum rows desired:
+            if len(aedges) > self.max_rows_per_test:
+                rgs = range(len(aedges))
+                aes = np.random.choice(rgs, self.max_rows_per_test)
+                aedges = np.array(list(aedges))[aes]
+
             # iterate over each placement of the edges
             for edgetup in aedges:
 
@@ -335,7 +355,8 @@ class Database:
                         arr_h[idx] = iheights
                         arr_n[idx] = ne
                         arr_a[idx] = (edgetup[0], edgetup[1], aprop)
-                        arr_s[idx] = slide_seed
+                        if self.node_slider:
+                            arr_s[idx] = slide_seed
 
                         # advance counter
                         idx += 1
